@@ -65,14 +65,14 @@ enum WatchScoreHoleLayout {
     }
 }
 
-/// Which inline wheel is open on 本洞成绩.
+/// Which putts / penalties picker is open on 本洞成绩.
 public enum WatchScoreWheel: String, Equatable {
     case putts, penalty
 }
 
 /// B6 本洞成绩 (README §3): one screen. The total is a horizontal number band (drag or Crown; the
-/// middle number is the value, its neighbours smaller and fainter). Putts and penalties are inline
-/// wheels: tap to open, roll up/down (or the Crown) in a loop, and they close once left alone.
+/// middle number is the value, its neighbours smaller and fainter). Putts and penalties are chips
+/// that open a full-screen picker (- / +, roll up/down, or the Crown, in a loop; 完成 or left alone).
 /// Par 4/5 add the three tee-shot cells. 保存 confirms; an unconfirmed hole is saved by the next
 /// hole's tee shot. Presentational and driven by `WatchRoundModel`.
 public struct WatchScoreHoleView: View {
@@ -99,6 +99,8 @@ public struct WatchScoreHoleView: View {
     @State private var wheelDrag: CGFloat = 0
     /// A roll on the open wheel has ended; it folds back after a short pause.
     @State private var wheelSettled = false
+    /// A finger is on the open picker: it never folds mid-drag.
+    @State private var wheelDragging = false
     /// DEBUG evidence only (`WatchUITestRoot` score-putts / score-penalty): keep the fixture's open
     /// wheel open so a runtime capture shows it. Production always folds it back.
     private let holdsOpenWheel: Bool
@@ -145,8 +147,8 @@ public struct WatchScoreHoleView: View {
             VStack(spacing: m.spacing) {
                 header(m)
                 scoreBand(m)
-                // 推 / 罚 roll IN PLACE inside their own chip (README §3: 原地上下滚，不弹单独页面);
-                // the band, the other chip and the tee cells stay where they are and uncovered.
+                // 推 / 罚 open a full-screen picker (owner feedback 2026-10-11 supersedes README §3
+                // 原地上下滚: the in-chip wheel was too small to operate on the wrist).
                 HStack(spacing: 6) {
                     wheelChip(.putts, m)
                     wheelChip(.penalty, m)
@@ -182,9 +184,10 @@ public struct WatchScoreHoleView: View {
         }
         .task(id: wheelIdentity) {
             // An open wheel closes once left alone ("停手即选定并收起").
-            guard openWheel != nil, !holdsOpenWheel else { return }
+            guard openWheel != nil, !holdsOpenWheel, !wheelDragging else { return }
             try? await Task.sleep(nanoseconds: WatchScoreHoleLayout.wheelCloseDelayNanoseconds(settled: wheelSettled))
             guard !Task.isCancelled else { return }
+            wheelDrag = 0
             withAnimation(.easeOut(duration: 0.2)) { openWheel = nil }
         }
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: score)
@@ -193,8 +196,8 @@ public struct WatchScoreHoleView: View {
     /// Changes whenever the open wheel or its value changes, restarting the close timer.
     private var wheelIdentity: String {
         switch openWheel {
-        case .putts: return "putts-\(putts)-\(wheelSettled)"
-        case .penalty: return "penalty-\(penalty)-\(wheelSettled)"
+        case .putts: return "putts-\(putts)-\(wheelSettled)-\(wheelDragging)"
+        case .penalty: return "penalty-\(penalty)-\(wheelSettled)-\(wheelDragging)"
         case nil: return "closed"
         }
     }
@@ -322,7 +325,7 @@ public struct WatchScoreHoleView: View {
         let range = wheel == .putts ? WatchScoreRules.puttRange : WatchScoreRules.penaltyRange
         let name = wheel == .putts ? "推杆" : "罚杆"
         let compact = size.height < WatchScoreHoleLayout.compactHeight
-        let digit: CGFloat = compact ? 54 : 64
+        let digit: CGFloat = compact ? 50 : 64
         let button: CGFloat = compact ? 44 : 50
         return ZStack {
             Color.black.opacity(0.96)
@@ -369,9 +372,11 @@ public struct WatchScoreHoleView: View {
             DragGesture(minimumDistance: 6)
                 .onChanged { drag in
                     wheelSettled = false
+                    wheelDragging = true
                     wheelDrag = WatchScoreHoleLayout.wheelPeek(drag.translation.height)
                 }
                 .onEnded { drag in
+                    wheelDragging = false
                     wheelDrag = 0
                     let steps = WatchScoreHoleLayout.wheelSteps(drag.translation.height)
                     if steps != 0 { step(steps) }
