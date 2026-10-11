@@ -328,7 +328,7 @@ public struct WatchScoreHoleView: View {
         let digit: CGFloat = compact ? 50 : 64
         let button: CGFloat = compact ? 44 : 50
         return ZStack {
-            Color.black.opacity(0.96)
+            Color.black // opaque: the score screen underneath must not show through
             VStack(spacing: compact ? 2 : 4) {
                 Text(name)
                     .font(.system(size: 17, weight: .black))
