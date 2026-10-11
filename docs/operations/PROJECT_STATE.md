@@ -1,120 +1,108 @@
 # Garmin AI Caddie Project State
 
 > Short durable continuity ledger. Only this file is authoritative.
-> Dated docs/archive/ files are historical and non-authoritative.
+> Completed/history is preserved verbatim in dated `docs/archive/` files.
 
-**Updated:** 2026-10-10 20:44 UTC
-**Canonical branch:** main; product merge a08634a8; released source b662572e
+**Updated:** 2026-10-11 19:18 UTC
+**Canonical baseline:** main `0882c41c` / released source `b662572e`
 **Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress`
 
-## Current state and deduplication
+## Current state
 
-#404–#416 reviewed/merged; applicable backend deployments complete. Do not repeat
-handled reviews/comments/tests. Reports and verbatim archives preserve evidence.
-#413/#414/#416 branches/resources closed; evidence published b662572e.
-Shared canonical checkout remains a38a97bc; preserve its HEAD/files/normal index.
-
-This commit publishes the verified manual-release filter in waiter/tests/AGENTS.
-Actual Actions workflow/event metadata grants the exception only to the three
-manual TestFlight workflows. Own ordinary/manual Native CI remains suppressed.
-Homeserver15 provenance regressions/12.740s passed, no skips; bash -n passed.
-Snapshot closed. Published waiter runtime path is this operation's persistent
-publication/ops/wait_for_conclusion.sh; do not overwrite shared source files.
-
-Release38079005590 failed19:20:08UTC at backend-preflight TLS EOF before upload.
-Build86 archive/export succeeded; no uploaded86 claim. Explicit verdict preserved
-in blocking-waits/wait-release-38079005590-20261010T201619Z-122809.log.
-Claude's retry38083089271 on b662572e returned success/none through delegated
-explicit waiter; handle17379 closed0, no resources. No duplicate upload.
-Log blocking-waits/wait-release-38083089271-20261010T202711Z-130634.log.
-Downloaded IPA/provenance independently match source/run/backend/hash; actual
-iPhone and embedded Watch plists both0.1.0(86). Apple read-only38084409144
-success20:37:04UTC: VALID/unexpired/IN_BETA_TESTING; existing internal all-builds
-group contains86, external group does not. No particular device-install claim.
-Apple log blocking-waits/wait-ci-38084409144-20261010T203723Z-143537.log.
-Report2026-10-10-release86-and-waiter-filter.md; #416 reply6102006509 handled.
-
-SSH loss20:02UTC recovered20:10:16. Exact owned orphan73178 closed with receipts
-in operations/feedback-recovery-20261010T2010; cursor/shared monitor preserved.
-Loopback/public health200/cbc17f4e. No routes/proxies/keys changed.
-No pending main feedback terminal or delegated wait; rearm after this operation.
+- #404–#416 were reviewed, merged, and (where required) deployed. Do not
+  repeat those reviews, tests, comments, or Build 86 upload.
+- #417 whole-round Watch audit is complete as an evidence pass. Final issue
+  findings comment: [#6110771081](https://github.com/jasonhorga/garmin-ai-caddie/issues/417#issuecomment-6110771081).
+- #418 remains a draft test-only scaffold at `715b6ddb`. Required CI and Native
+  CI are green, but exact-head Watch audit run [38158983899](https://github.com/jasonhorga/garmin-ai-caddie/actions/runs/38158983899)
+  failed with the retained 49 mm P1 candidate and incomplete control coverage;
+  hold merge. Latest PR comment: [#6112194367](https://github.com/jasonhorga/garmin-ai-caddie/pull/418#issuecomment-6112194367).
+- #419 exact head `4cfb1588` passed required CI/Native artifact review, received
+  [PASS](https://github.com/jasonhorga/garmin-ai-caddie/pull/419#issuecomment-6112715912),
+  merged as `95b5694e`, and had its source branch deleted. Evidence is recorded
+  in `docs/operations/2026-10-11-pr419-review-4cfb1588.md`.
+- Product fixes are outside the audit scope and await Jason/Claude triage.
 
 ## Unfinished queue
 
-- `PR-FEEDBACK-CONTINUOUS` — `in-progress`: exact-head reviews and same-turn waits.
-- `WAIT-RELEASE-EVENT-FILTER` — `done`:15 regressions passed; this commit
-  publishes code/policy/evidence, and the corrected waiter is ready for use.
-- `RELEASE-38083089271` — `done`:0.1.0(86), uploaded/source/Apple/internal group
-  independently verified; exact artifacts retained, both wait terminals closed.
-- `NATIVE-FIXTURE-LAYOUT-STABILITY` — `queued`: nonblocking 八号铁164 variation
-  reported in #4166101180215; fixed-route snapshots should remain consistent.
-- `IOS-STATUS-CONTRAST` — `queued`: nonblocking dark navigation/status text.
-- `OWNER-DEVICE-BUILD86` — `evidence-open`: current paired-device validation owner work;
-  supersedes the old build82 baseline without claiming device validation.
+- `PR-FEEDBACK-CONTINUOUS` — `in-progress`: resume the single blocking
+  `ops/wait_for_conclusion.sh --feedback` waiter after this state commit.
+- `PR-418-AUDIT-SCAFFOLD` — `evidence-open`: keep draft until the audit
+  findings and the remaining scorecard/manual-control coverage are triaged.
+- `NATIVE-FIXTURE-LAYOUT-STABILITY` — `queued`: nonblocking #416 variation.
+- `IOS-STATUS-CONTRAST` — `queued`: nonblocking dark status/navigation text.
+- `OWNER-DEVICE-BUILD86` — `evidence-open`: paired-device validation remains
+  owner work; package evidence is not a physical-install claim.
 
-## Live verification baseline
+## Watch audit evidence
 
-- Production API/sync cbc17f4e76f085229c3bdb3c74a5067951b217a6.
-  API aicaddie-release-cbc17f4e-production-20261010, loopback39055;
-  public https://caddie.taile36706.ts.net; user data/ingress retained.
-  API garmin-ai-caddie-api:cbc17f4e76f085229c3bdb3c74a5067951b217a6-candidate-20261010;
-  sync aicaddie-sync:cbc17f4e76f085229c3bdb3c74a5067951b217a6.
-  Both prebuilt before cutover; revision/deployment gates passed.
-  Manual sync17:51:52–17:52:25UTC/33s, exact revision/sync ok/done.
-  New-image43 tests/0.969s. Health/history/sync/precise prep/PNG200.
-- #404/#406 nine-hole mixed workload35.4904→22.9303s;237 tests/5 existing skips.
-  Report2026-10-10-pr404-406-backend-deploy.md; server time, not phone UX.
-- #414 exact c13a717e approved6100961909/merged de2cedcf;126 contracts/8.492s.
-  Native38072029726 iOS786/0, Watch454/0,2 UI tests;144 PNGs matched.
-- #416 exact a38a97bc approved6101180215/merged a08634a8;126 contracts/6.491s.
-  Native38075749433 iOS785/0, Watch452/0,2 UI tests;143/144 PNGs identical,
-  all Watch unchanged; zoomed iOS image variation reported as nonblocking.
-- Independently verified TestFlight0.1.0(86): upload38083089271,
-  Apple38084409144 VALID/IN_BETA_TESTING, existing internal group includes86;
-  source b662572e, backend cbc17f4e, IPA
-  c59ca85eb527443306d1f49462c8b2c09ac2ecaa2fbebf08ed66dbec0affb4e9.
-  Both package plists86/companion IDs match. This does not prove physical-device
-  GPS, battery, WCSession timing or installation. Prior82 details archived.
+- Exact source `715b6ddb31ddbf550fc7819e2a5576fefe377206`; Xcode 26.3,
+  watchOS 26.2; 41/46/49 mm. Run [38158983899](https://github.com/jasonhorga/garmin-ai-caddie/actions/runs/38158983899).
+- All ten methods ran on every face with zero skips: 41 mm 8/2, 46 mm 8/2,
+  49 mm 8/2 passed/failed. 156/212/215 screenshots; contact sheets and face
+  artifacts are retained for 30 days.
+- CI [38158970598](https://github.com/jasonhorga/garmin-ai-caddie/actions/runs/38158970598)
+  and Native [38158970597](https://github.com/jasonhorga/garmin-ai-caddie/actions/runs/38158970597)
+  passed. Preparation checks: 145 passed (7 audit-tool, 12 native visual,
+  126 mobile contracts).
+- P1 candidate: 49 mm `手动记杆` leaves `shots=0; pending=false` on the
+  hole root in the real first-tap path; the injected candidate is explicitly
+  not a recovery proof.
+- P2/control coverage: 46 mm undo evidence misses the four-second action
+  window after delayed attachment capture; 46/49 mm 9→18 continuation remains
+  not hittable; 41 mm scorecard navigation fails at row 4. Existing visual
+  findings remain: 41 mm F/M/B `575` clips to `5…`, 46/49 mm score `11` clips
+  to `…`, zoom-2 hazard pan changes to 果岭 on 41/49, and post-measure page
+  swipes are swallowed on all faces.
+- This remains a coverage/control investigation, not a silently passing
+  result. Simulator evidence cannot prove real GPS, battery, WCSession timing,
+  physical Crown, or wrist motion.
+- Design references checked: `docs/design/2026-09-25-ui-redesign/README.md`
+  §3 and `watch.html`; October 10 full-bleed/floating F/M/B direction wins.
+
+## Live verification baselines
+
+- Production API/sync: `cbc17f4e76f085229c3bdb3c74a5067951b217a6`; health,
+  history, sync, precise prep and topo PNG gates passed; manual sync reported
+  `sync ok` and `done`.
+- #404/#406 deployment evidence: 237 related tests, five existing geometry
+  skips; nine-hole workload 35.49 s → 22.93 s; two render workers observed;
+  report `docs/operations/2026-10-10-pr404-406-backend-deploy.md`.
+- Internal TestFlight 0.1.0 (86) was independently Apple-checked as
+  `VALID/IN_BETA_TESTING`; no new upload is authorized by this audit.
 
 ## Owned resources and cleanup
 
-- No pending feedback terminal, delegated agent, service, container, volume,
-  dependency environment, tunnel or implementation worktree.
-- Snapshot /dev/shm/garmin-ai-caddie-wait-release-filter-20261010 closed:
- 34520bytes, source comparisons/process cwd/fds clear; exact2-file deletion.
-  Evidence operations/wait-release-filter-20261010: manifest/source hashes/tests/
-  scripts/release IPA/provenance/Apple/cleanup/publication; persistent retained.
-  Alternate index removed after guarded push; normal index/head/files preserved.
-  Local controls have exact backup/allow-list receipts; no production cursor/
-  event changes. Both release/Apple delegated handles closed; no cleanup pending.
-- Earlier #413/#414/#416 snapshots/controls closed, evidence retained.
-  #415 disposable resources closed; old f9586f6c stopped/rollback retained.
-- Preserve unrelated dirty ops/pr_feedback_monitor.sh and older .codex-* files.
-  Local main e930ca65/older docs commits retained. Shared remote repository
-  /home/jason/codex-runs/garmin-ai-caddie-claude-takeover-20261005 is Claude's too:
-  never switch/reset/stash, alter its files or use its normal index.
-  Publish scoped code/evidence via alternate index on fresh origin/main.
-- gh-feedback timer and blocking-waits/feedback-cursor unchanged.
-  Last capacity49GiB disk/5.0GiB available RAM/3.3GiB shm.
-- Displaced ledger retained verbatim in
-  docs/archive/PROJECT_STATE-2026-10-10-before-release-filter-fix.md and
-  PROJECT_STATE-2026-10-10-release-filter-verification-in-progress.md.
+- Audit worktree: `/home/ubuntu/claude-web-data/repo/garmin-ai-caddie-watch417-20261011`,
+  Codex-owned, created 2026-10-11 08:30 UTC, expiry 2026-10-18 08:30 UTC.
+- Remote verification snapshot: `/dev/shm/garmin-ai-caddie-watch417-verify-20261011`,
+  expiry 2026-10-12 08:30 UTC; no dependencies or service left running.
+- Persistent evidence: `/home/jason/garmin-ai-caddie-data/operations/watch417-simulator-audit-20261011`;
+  artifacts, run receipts, final comments and manifests retained. Test
+  containers and download terminals were removed; no tunnel/service/timer was
+  created. Local contact-sheet copies and the `/dev/shm` verification snapshot
+  were removed 2026-10-11 15:52 UTC after artifact retention was confirmed.
+- #419 review evidence is retained at
+  `/home/jason/garmin-ai-caddie-data/operations/pr419-4cfb1588-20261011`;
+  local screenshot copies were moved to Trash after inspection, and no
+  service, tunnel, container, or dependency environment was created.
+- Historical pre-final ledger is preserved verbatim at
+  `docs/archive/PROJECT_STATE-2026-10-11-watch417-final-audit-preclose.historical.md`.
+- Shared checkout `/home/jason/codex-runs/garmin-ai-caddie-claude-takeover-20261005`
+  remains untouched. `gh-feedback` timer/cursor are unchanged.
 
-## Next action and stopping
+## Next action and stop conditions
 
-Finish scoped publication/local controls closure, then use the published waiter
-from operations/wait-release-filter-20261010/publication/ops in one same-turn
---feedback terminal. Publication ID/guards are in persistent publication-commit.txt.
-Deduplicate already handled manual runs38079005590/38083089271/38084409144 and
-#404–#416 comments/checks; do not re-review or reset quiet time for own events.
-For a pending handle:
-wait300000ms, read its handle once, repeat until one-line conclusion.
-No liveness checks/second monitor, CI-only commits or quiet resets for own CI.
-Handle returned new events; exact-head CI/Native/screenshots before merge.
+1. Commit/push this ledger and the dated archive on the audit branch; keep
+   #418 draft and do not dispatch another Watch audit.
+2. Close the owned snapshot/contact-sheet copies after their expiry or once
+   evidence is no longer needed, then launch one blocking feedback waiter in
+   the same control turn. Observe only by `sleep 300000` then one
+   `write_stdin`; its one-line result is the only wake-up signal.
+3. Process new external PR events once, ignoring Codex-owned docs/state CI.
 
-Owner resumed after historical October9 cutoff. Stop after48h without external
-PR events and no open PRs, or an owner stop. Last recorded external PR check-set
-Claude's release retry completion2026-10-10 20:27:19UTC; conditional quiet stop
-2026-10-12 20:27:19UTC. Own Apple dispatch38084409144 and this commit/CI/comment
-do not reset it. Confirm no newer external events/open PRs before completion.
-Keep this ledger≤200 lines.
+Stop at 2026-10-13 08:22:16 UTC, or earlier after 48 hours with no external
+PR events and no open PRs. Owner stop instruction overrides this condition.
+Every GitHub comment/review ends `_Generated by Codex_`; every Codex commit
+ends `Generated-by: Codex`. Keep this file at 200 lines or fewer and archive
+completed detail by date without deleting information.
