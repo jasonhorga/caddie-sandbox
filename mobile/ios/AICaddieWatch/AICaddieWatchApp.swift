@@ -138,6 +138,7 @@ public struct AICaddieWatchApp: App {
                     reconcileAutoShot()
                     reconcileLocationServices()
                     watchLocation.setHeadingUpdates(screen == .flagDirection)
+                    roundModel.noteInPlay()
                 }
                 .onChange(of: gpsPreheatEnabled, initial: true) { _, _ in
                     reconcileLocationServices()
@@ -186,6 +187,7 @@ public struct AICaddieWatchApp: App {
                     roundIdleTracker.reset()
                     guard roundModel.round != nil, roundModel.screen != .resume else { return }
                     while !Task.isCancelled {
+                        roundModel.noteInPlay()
                         pauseRoundIfIdle(watchLocation.latestFix)
                         try? await Task.sleep(nanoseconds: 60_000_000_000)
                     }

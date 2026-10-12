@@ -901,6 +901,45 @@ final class WatchRoundModelTests: XCTestCase {
         XCTAssertEqual(model.activeHole, 1)
     }
 
+    /// Owner request 2026-10-12: an app quit by accident mid-round comes straight back to it.
+    func testAnAppQuitMidPlayComesStraightBackToTheRound() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wmodel-\(UUID().uuidString)", isDirectory: true)
+        let suite = "inplay-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let marker = WatchRoundInPlayMarker(defaults: defaults)
+        func launch() -> WatchRoundModel {
+            WatchRoundModel(
+                store: WatchRoundStore(directoryURL: directory),
+                persistAutoShotEnabled: { _ in },
+                inPlayMarker: marker
+            )
+        }
+        let model = launch()
+        model.seedRound([hole(1, par: 4), hole(2)], activeHole: 1)
+        model.startScoringActiveHole()
+        XCTAssertEqual(model.screen, .scoring)
+        model.noteInPlay()
+
+        let relaunched = launch()
+        XCTAssertEqual(relaunched.screen, .scoring, "the open score draft comes back as it was")
+        XCTAssertEqual(relaunched.scoringHole, 1)
+
+        relaunched.requestFinish()
+        relaunched.noteInPlay()
+        XCTAssertEqual(launch().screen, .resume, "quit while ending: Save & End is offered again")
+
+        relaunched.keepPlaying()
+        relaunched.noteInPlay()
+        relaunched.pauseForIdle()
+        XCTAssertEqual(launch().screen, .resume, "a round set aside as idle asks to resume")
+
+        marker.mark(roundId: "r1", at: Date().addingTimeInterval(-(WatchRoundInPlayMarker.resumeWindow + 60)))
+        XCTAssertEqual(launch().screen, .resume, "a round left longer asks to resume")
+        XCTAssertFalse(marker.wasInPlay(roundId: "other"))
+    }
+
     func testLastActivityIsTheNewestRecordedInput() {
         let model = seededModel(holes: [hole(1, par: 4), hole(2)])
         XCTAssertNil(model.lastActivityAt)
