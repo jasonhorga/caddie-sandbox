@@ -884,6 +884,32 @@ final class WatchRoundModelTests: XCTestCase {
         XCTAssertNil(model.draftFairway)
     }
 
+    /// Battery report 2026-10-12: an idle round is set aside (workout + GPS stop) without losing
+    /// anything; resuming brings back the same hole and the pending shot.
+    func testPausingAnIdleRoundKeepsEverythingForResume() {
+        let model = seededModel(holes: [hole(1, par: 4), hole(2)])
+        model.beginManualShot(latitude: 40.0, longitude: 116.0, horizontalAccuracyM: 5, capturedAt: "2026-07-26T08:00:00Z")
+        XCTAssertNotNil(model.pendingManualShot)
+
+        model.pauseForIdle()
+        XCTAssertEqual(model.screen, .resume)
+        XCTAssertEqual(model.round?.pendingManualShot?.hole, 1, "the undoable shot is persisted")
+
+        model.resumeRound()
+        XCTAssertEqual(model.screen, .home)
+        XCTAssertNotNil(model.pendingManualShot)
+        XCTAssertEqual(model.activeHole, 1)
+    }
+
+    func testLastActivityIsTheNewestRecordedInput() {
+        let model = seededModel(holes: [hole(1, par: 4), hole(2)])
+        XCTAssertNil(model.lastActivityAt)
+        model.beginManualShot(latitude: 40.0, longitude: 116.0, horizontalAccuracyM: 5, capturedAt: "2026-07-26T08:00:00Z")
+        model.completePendingManualShot(clubName: nil)
+        XCTAssertEqual(model.lastActivityAt, ISO8601DateFormatter().date(from: "2026-07-26T08:00:00Z"))
+        XCTAssertFalse(model.allPlannedHolesScored)
+    }
+
     func testManualShotRecordsClubThenLocationAndFeedsRecommendedScore() {
         let model = seededModel(holes: [hole(1, par: 4), hole(2)])
 

@@ -1048,6 +1048,43 @@ public final class WatchRoundModel: ObservableObject {
         restoreInteractionState(from: round)
     }
 
+    /// Sets a round left open aside (owner battery report 2026-10-12): everything is kept, including
+    /// a score draft or an undoable shot, and the resume screen stops the workout session and GPS
+    /// until the player chooses to continue, save or abandon.
+    public func pauseForIdle() {
+        guard round != nil, screen != .resume else { return }
+        persistInteractionState()
+        screen = .resume
+    }
+
+    /// The newest recorded input of the round (shot, score, putt, ...), from its event times.
+    public var lastActivityAt: Date? {
+        guard let round else { return nil }
+        return round.pendingEvents
+            .compactMap { Self.fractionalTime.date(from: $0.createdAt) ?? Self.plainTime.date(from: $0.createdAt) }
+            .max()
+    }
+
+    private static let fractionalTime: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let plainTime = ISO8601DateFormatter()
+
+    /// Every hole of the round has a score.
+    public var allPlannedHolesScored: Bool { holeCount > 0 && scoredHoles >= holeCount }
+
+    /// Tees and green centres of the round's holes: where "on the course" is.
+    public var roundHolePoints: [(latitude: Double, longitude: Double)] {
+        (round?.holeStates ?? []).flatMap { state -> [(latitude: Double, longitude: Double)] in
+            var points: [(latitude: Double, longitude: Double)] = []
+            if let lat = state.teeLatitude, let lon = state.teeLongitude { points.append((lat, lon)) }
+            if let lat = state.centerGreenLat, let lon = state.centerGreenLon { points.append((lat, lon)) }
+            return points
+        }
+    }
+
     private func restoreInteractionState(from persisted: WatchRoundStore.PersistedRound?) {
         pendingManualShot = persisted?.pendingManualShot
         pendingAutoShotCandidate = persisted?.pendingAutoShotCandidate
