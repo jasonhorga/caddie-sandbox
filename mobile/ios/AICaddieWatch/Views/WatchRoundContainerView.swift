@@ -769,6 +769,12 @@ public struct WatchRoundContainerView: View {
             showPlaysLike: s.elevationDeltaM != nil && hasQualifiedRangeFix,
             fullMap: false,
             mapScale: CGFloat(WatchHoleMapView.restingCrownScale),
+            // Owner choice 2026-10-12 (#422 prototypes): the player at the bottom, between the two
+            // corner controls, the screen given to what is ahead; S70's chevron instead of a blue
+            // dot; the distance walked from the last shot up in the facts (it finds the ball).
+            restingPlayerAnchorFraction: nil,
+            playerMarker: .chevron,
+            lastShotPlacement: .facts,
             geometry: renderedGeometry,
             pinImagePoint: selectedPin,
             measuredPxOverride: measuredPxOverride,
