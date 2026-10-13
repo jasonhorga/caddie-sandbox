@@ -259,6 +259,7 @@ public final class WatchRoundModel: ObservableObject {
     public var config: WatchRoundConfig?
 
     private let store: WatchRoundStore
+    private let inPlayMarker: WatchRoundInPlayMarker
     private let clientId: String
     private let makeEventId: () -> String
     private let now: () -> String
@@ -286,9 +287,11 @@ public final class WatchRoundModel: ObservableObject {
         makeEventId: @escaping () -> String = { UUID().uuidString },
         now: @escaping () -> String = { ISO8601DateFormatter().string(from: Date()) },
         uploader: (([WatchInputEvent], String) async throws -> [String])? = nil,
-        finisher: ((String, WatchRoundFinishMetadata) async throws -> Void)? = nil
+        finisher: ((String, WatchRoundFinishMetadata) async throws -> Void)? = nil,
+        inPlayMarker: WatchRoundInPlayMarker = WatchRoundInPlayMarker(defaults: nil)
     ) {
         self.store = store
+        self.inPlayMarker = inPlayMarker
         self.clientId = clientId
         self.config = config
         self.autoShotEnabled = autoShotEnabled
@@ -301,9 +304,13 @@ public final class WatchRoundModel: ObservableObject {
         self.round = persisted
         if persisted == nil {
             restoreInteractionState(from: nil)
+        } else if let persisted, inPlayMarker.wasInPlay(roundId: persisted.roundId) {
+            // In play moments ago (the app was quit or stopped): straight back to the round,
+            // including a score draft that was open.
+            restoreInteractionState(from: persisted)
         } else {
-            // A restored or update-migrated round never throws the player directly into an old score
-            // draft. The draft remains intact and is restored only after explicit Resume.
+            // A round restored later (or set aside as idle) never throws the player directly into an
+            // old score draft. The draft remains intact and is restored only after explicit Resume.
             pendingManualShot = persisted?.pendingManualShot
             pendingAutoShotCandidate = persisted?.pendingAutoShotCandidate
             screen = .resume
@@ -312,7 +319,15 @@ public final class WatchRoundModel: ObservableObject {
 
     /// Default standalone model backed by the on-watch document store (for `@StateObject` in the app).
     public convenience init() {
-        self.init(store: WatchRoundStore())
+        self.init(store: WatchRoundStore(), inPlayMarker: WatchRoundInPlayMarker(defaults: Self.inPlayDefaults))
+    }
+
+    private static var inPlayDefaults: UserDefaults? {
+#if DEBUG
+        // UI-test launches seed and relaunch within seconds to exercise the resume screen itself.
+        if ProcessInfo.processInfo.arguments.contains("-uitest-screen") { return nil }
+#endif
+        return .standard
     }
 
     // MARK: - derived state (drives the views)
@@ -1048,6 +1063,62 @@ public final class WatchRoundModel: ObservableObject {
         restoreInteractionState(from: round)
     }
 
+    /// Sets a round left open aside (owner battery report 2026-10-12): everything is kept, including
+    /// a score draft or an undoable shot, and the resume screen stops the workout session and GPS
+    /// until the player chooses to continue, save or abandon.
+    /// Returns false (and the round stays in play, with workout and GPS) when the draft could not be
+    /// written durably; the caller tries again on its next check.
+    @discardableResult
+    public func pauseForIdle() -> Bool {
+        guard round != nil, screen != .resume else { return false }
+        guard persistInteractionState() else { return false }
+        inPlayMarker.clear()
+        screen = .resume
+        return true
+    }
+
+    /// Called about once a minute and on every screen change (see `WatchRoundInPlayMarker`).
+    public func noteInPlay(at now: Date = Date()) {
+        guard let round else { return }
+        switch screen {
+        case .resume:
+            return
+        case .finishing, .finishConfirmation, .abandonConfirmation:
+            // Ending the round: a relaunch offers Save & End again rather than going back into play.
+            inPlayMarker.clear()
+        default:
+            inPlayMarker.mark(roundId: round.roundId, at: now)
+        }
+    }
+
+    /// The newest recorded input of the round (shot, score, putt, ...), from its event times.
+    public var lastActivityAt: Date? {
+        guard let round else { return nil }
+        return round.pendingEvents
+            .compactMap { Self.fractionalTime.date(from: $0.createdAt) ?? Self.plainTime.date(from: $0.createdAt) }
+            .max()
+    }
+
+    private static let fractionalTime: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let plainTime = ISO8601DateFormatter()
+
+    /// Every hole of the round has a score.
+    public var allPlannedHolesScored: Bool { holeCount > 0 && scoredHoles >= holeCount }
+
+    /// Tees and green centres of the round's holes: where "on the course" is.
+    public var roundHolePoints: [(latitude: Double, longitude: Double)] {
+        (round?.holeStates ?? []).flatMap { state -> [(latitude: Double, longitude: Double)] in
+            var points: [(latitude: Double, longitude: Double)] = []
+            if let lat = state.teeLatitude, let lon = state.teeLongitude { points.append((lat, lon)) }
+            if let lat = state.centerGreenLat, let lon = state.centerGreenLon { points.append((lat, lon)) }
+            return points
+        }
+    }
+
     private func restoreInteractionState(from persisted: WatchRoundStore.PersistedRound?) {
         pendingManualShot = persisted?.pendingManualShot
         pendingAutoShotCandidate = persisted?.pendingAutoShotCandidate
@@ -1077,8 +1148,10 @@ public final class WatchRoundModel: ObservableObject {
         screen = .scoring
     }
 
-    private func persistInteractionState() {
-        guard var current = round else { return }
+    /// Writes the draft and staged shot into the round file; false when the durable write failed.
+    @discardableResult
+    private func persistInteractionState() -> Bool {
+        guard var current = round else { return false }
         current.pendingManualShot = pendingManualShot
         current.pendingAutoShotCandidate = pendingAutoShotCandidate
         if let scoringHole {
@@ -1094,8 +1167,9 @@ public final class WatchRoundModel: ObservableObject {
         } else {
             current.scoreDraft = nil
         }
-        try? store.save(current)
+        let saved = (try? store.save(current)) != nil
         round = current
+        return saved
     }
 
     /// Start a self-contained practice round on the watch (no phone needed) — `holeCount` blank holes at

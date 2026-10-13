@@ -11,6 +11,11 @@ public struct AICaddieWatchApp: App {
         let longitudeBucket: Int?
     }
 
+    private struct RoundInPlayKey: Equatable {
+        let roundId: String?
+        let setAside: Bool
+    }
+
     private struct ActiveCourseUpgradeKey: Equatable {
         let roundId: String
         let frontGlobalId: Int
@@ -26,6 +31,9 @@ public struct AICaddieWatchApp: App {
     @StateObject private var watchLocation = WatchLocationProvider()
     @StateObject private var autoShotProvider = WatchAutoShotProvider()
     @AppStorage("watch.gpsPreheatEnabled") private var gpsPreheatEnabled = true
+    /// Sets a round left open aside so its workout session and GPS stop (battery report 2026-10-12).
+    /// Checked once a minute with the newest wrist fix.
+    @State private var roundIdleTracker = WatchRoundIdleTracker()
     /// B7 step 1 (实验): record swing candidates and their features; never changes a score.
     @AppStorage("watch.collectSwingFeatures") private var collectSwingFeatures = false
     private let swingCandidateStore = WatchSwingCandidateStore()
@@ -128,7 +136,9 @@ public struct AICaddieWatchApp: App {
                 }
                 .onChange(of: roundModel.screen, initial: true) { _, screen in
                     reconcileAutoShot()
+                    reconcileLocationServices()
                     watchLocation.setHeadingUpdates(screen == .flagDirection)
+                    roundModel.noteInPlay()
                 }
                 .onChange(of: gpsPreheatEnabled, initial: true) { _, _ in
                     reconcileLocationServices()
@@ -170,6 +180,17 @@ public struct AICaddieWatchApp: App {
                 }
                 .onChange(of: watchLocation.latestFix) { _, fix in
                     autoShotProvider.updateSpeed(fix)
+                }
+                .task(id: RoundInPlayKey(roundId: roundModel.round?.roundId, setAside: roundModel.screen == .resume)) {
+                    // A plain task, not onChange: it keeps running in the background while the
+                    // workout keeps the app alive. Each round in play (and each resume) starts fresh.
+                    roundIdleTracker.reset()
+                    guard roundModel.round != nil, roundModel.screen != .resume else { return }
+                    while !Task.isCancelled {
+                        roundModel.noteInPlay()
+                        pauseRoundIfIdle(watchLocation.latestFix)
+                        try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    }
                 }
                 .onChange(of: autoShotProvider.latestSwing) { _, observation in
                     // The round and hole in play when the motion ended, even if it is delivered
@@ -228,9 +249,9 @@ public struct AICaddieWatchApp: App {
                     Task { await roundModel.retryDeferredFinishes() }
                 }
                 .onChange(of: scenePhase) { _, phase in
+                    reconcileLocationServices()
                     guard phase == .active else { return }
                     syncClient.requestConfigurationFromPhone()
-                    reconcileLocationServices()
                     Task { await roundModel.retryDeferredFinishes() }
                     Task { await uploadFinishedSwingCandidates() }
                 }
@@ -502,12 +523,38 @@ public struct AICaddieWatchApp: App {
         }
     }
 
+    private func pauseRoundIfIdle(_ fix: WatchLocationFix?) {
+        guard roundModel.round != nil, roundModel.screen != .resume else { return }
+        if roundIdleTracker.evaluate(
+            latitude: fix?.coordinate.latitude,
+            longitude: fix?.coordinate.longitude,
+            horizontalAccuracyM: fix?.horizontalAccuracyM ?? .infinity,
+            at: Date(),
+            holePoints: roundModel.roundHolePoints,
+            lastActivityAt: roundModel.lastActivityAt,
+            scoredHoles: roundModel.scoredHoles,
+            // A nine can go on to the next nine (the turn, often over lunch); only a full round
+            // is finished. A nine left open is still set aside by the other two rules.
+            allHolesScored: roundModel.allPlannedHolesScored && roundModel.holeCount > 9
+        ) != nil, roundModel.pauseForIdle() {
+            roundIdleTracker.reset()
+            // Directly, not via onChange: this can run while the app is in the background.
+            reconcileAutoShot()
+            reconcileLocationServices()
+        }
+    }
+
     /// `GPS 预热` keeps a fix warm while choosing a course. Once a round begins, location is always
     /// on because the rangefinder and shot positions must not be silently disabled by a setup preference.
     private func reconcileLocationServices() {
+        let setAside = roundModel.round != nil && roundModel.screen == .resume
         if WatchLocationLaunchPolicy.shouldStartLocationServices(
-            hasActiveRound: roundModel.round != nil,
+            // A set-aside round (resume screen) is not playing. The setup preheat warms GPS there
+            // only while the player is looking, not for a round set aside in a pocket.
+            hasActiveRound: roundModel.round != nil && !setAside,
+            // The live state: the minute task runs on an App copy whose scenePhase can be stale.
             gpsPreheatEnabled: gpsPreheatEnabled
+                && !(setAside && WKApplication.shared().applicationState != .active)
         ) {
             watchLocation.requestAuthorization()
             watchLocation.startUpdatingLocation()

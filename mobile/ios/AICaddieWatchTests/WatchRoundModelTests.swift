@@ -884,6 +884,103 @@ final class WatchRoundModelTests: XCTestCase {
         XCTAssertNil(model.draftFairway)
     }
 
+    /// Battery report 2026-10-12: an idle round is set aside (workout + GPS stop) without losing
+    /// anything; resuming brings back the same hole and the pending shot.
+    func testPausingAnIdleRoundKeepsEverythingForResume() {
+        let model = seededModel(holes: [hole(1, par: 4), hole(2)])
+        model.beginManualShot(latitude: 40.0, longitude: 116.0, horizontalAccuracyM: 5, capturedAt: "2026-07-26T08:00:00Z")
+        XCTAssertNotNil(model.pendingManualShot)
+
+        model.pauseForIdle()
+        XCTAssertEqual(model.screen, .resume)
+        XCTAssertEqual(model.round?.pendingManualShot?.hole, 1, "the undoable shot is persisted")
+
+        model.resumeRound()
+        XCTAssertEqual(model.screen, .home)
+        XCTAssertNotNil(model.pendingManualShot)
+        XCTAssertEqual(model.activeHole, 1)
+    }
+
+    /// Owner request 2026-10-12: an app quit by accident mid-round comes straight back to it.
+    func testAnAppQuitMidPlayComesStraightBackToTheRound() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wmodel-\(UUID().uuidString)", isDirectory: true)
+        let suite = "inplay-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let marker = WatchRoundInPlayMarker(defaults: defaults)
+        func launch() -> WatchRoundModel {
+            WatchRoundModel(
+                store: WatchRoundStore(directoryURL: directory),
+                persistAutoShotEnabled: { _ in },
+                inPlayMarker: marker
+            )
+        }
+        let model = launch()
+        model.seedRound([hole(1, par: 4), hole(2)], activeHole: 1)
+        model.startScoringActiveHole()
+        XCTAssertEqual(model.screen, .scoring)
+        model.noteInPlay()
+
+        let relaunched = launch()
+        XCTAssertEqual(relaunched.screen, .scoring, "the open score draft comes back as it was")
+        XCTAssertEqual(relaunched.scoringHole, 1)
+
+        relaunched.requestFinish()
+        relaunched.noteInPlay()
+        XCTAssertEqual(launch().screen, .resume, "quit while ending: Save & End is offered again")
+
+        relaunched.keepPlaying()
+        relaunched.noteInPlay()
+        relaunched.pauseForIdle()
+        XCTAssertEqual(launch().screen, .resume, "a round set aside as idle asks to resume")
+
+        marker.mark(roundId: "r1", at: Date().addingTimeInterval(-(WatchRoundInPlayMarker.resumeWindow + 60)))
+        XCTAssertEqual(launch().screen, .resume, "a round left longer asks to resume")
+        XCTAssertFalse(marker.wasInPlay(roundId: "other"))
+    }
+
+    /// #423 review: a pause whose durable write fails keeps the round in play (workout and GPS on).
+    func testAnIdlePauseThatCannotSaveKeepsTheRoundInPlay() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wmodel-\(UUID().uuidString)", isDirectory: true)
+        let suite = "inplay-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let marker = WatchRoundInPlayMarker(defaults: defaults)
+        let model = WatchRoundModel(
+            store: WatchRoundStore(directoryURL: directory),
+            persistAutoShotEnabled: { _ in },
+            inPlayMarker: marker
+        )
+        model.seedRound([hole(1, par: 4), hole(2)], activeHole: 1)
+        model.startScoringActiveHole()
+        model.noteInPlay()
+
+        // The round file's path becomes a non-empty directory: every write fails.
+        let file = directory.appendingPathComponent("round.json")
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: file.appendingPathComponent("block"))
+
+        XCTAssertFalse(model.pauseForIdle())
+        XCTAssertEqual(model.screen, .scoring, "still in play: the caller does not stop workout or GPS")
+        XCTAssertTrue(marker.wasInPlay(roundId: "r1"), "the marker is kept for an accidental quit")
+
+        try FileManager.default.removeItem(at: file)
+        XCTAssertTrue(model.pauseForIdle(), "the next check succeeds once the file can be written")
+        XCTAssertEqual(model.screen, .resume)
+    }
+
+    func testLastActivityIsTheNewestRecordedInput() {
+        let model = seededModel(holes: [hole(1, par: 4), hole(2)])
+        XCTAssertNil(model.lastActivityAt)
+        model.beginManualShot(latitude: 40.0, longitude: 116.0, horizontalAccuracyM: 5, capturedAt: "2026-07-26T08:00:00Z")
+        model.completePendingManualShot(clubName: nil)
+        XCTAssertEqual(model.lastActivityAt, ISO8601DateFormatter().date(from: "2026-07-26T08:00:00Z"))
+        XCTAssertFalse(model.allPlannedHolesScored)
+    }
+
     func testManualShotRecordsClubThenLocationAndFeedsRecommendedScore() {
         let model = seededModel(holes: [hole(1, par: 4), hole(2)])
 
