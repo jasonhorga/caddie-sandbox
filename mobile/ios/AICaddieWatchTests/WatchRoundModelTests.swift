@@ -1999,6 +1999,47 @@ final class WatchRoundModelTests: XCTestCase {
         XCTAssertEqual(model.round?.holeStates.count, 18)
     }
 
+    /// Owner request 2026-10-12: 开球 is preselected from where the tee shot landed (the second
+    /// shot's origin) against the fairway outline, the phone's B0 rule; Par 3 never.
+    func testTeeResultIsPreselectedFromTheSecondShot() {
+        // Image px → lat/lon: x 0…100 = lon 116.000…116.001, y 0…−100 = lat 40.000…40.001.
+        let projection = WatchHoleImageProjection(widthPx: 100, heightPx: 300, refs: [
+            WatchProjectionRef(lat: 40.0, lon: 116.0, px: 0, py: 0),
+            WatchProjectionRef(lat: 40.0, lon: 116.001, px: 100, py: 0),
+            WatchProjectionRef(lat: 40.001, lon: 116.0, px: 0, py: -100),
+        ])
+        let map = WatchHoleMap(
+            w: 100, h: 300, you: [50, 0], pin: [50, -200], layup: [50, -120], apex: [50, -100],
+            greenCtrl: [50, -180], route: [[50, 0, 0], [50, -200, 222]]
+        )
+        // The fairway runs north along the route, lon 116.0004–116.0006, lat 40.0003–40.0015.
+        let fairway = FairwayOutline(version: 1, polygons: [FairwayPolygon(outerLatLon: [
+            [40.0003, 116.0004], [40.0003, 116.0006], [40.0015, 116.0006], [40.0015, 116.0004],
+        ])])
+        func courseHole(_ n: Int, par: Int) -> WatchRoundState {
+            WatchRoundState(
+                roundId: "r1", hole: n, par: par, distanceM: nil, selectedClub: nil,
+                holeImageProjection: projection, holeMap: map, fairwayOutline: fairway,
+                score: 0, putts: 0, penaltyCount: 0, caddieConfidence: "offline"
+            )
+        }
+        func scoredFairway(secondLongitude: Double, par: Int) -> WatchFairwayResult? {
+            let model = seededModel(holes: [courseHole(1, par: par), courseHole(2, par: 4)])
+            model.beginManualShot(latitude: 40.0, longitude: 116.0005, horizontalAccuracyM: 5,
+                                  capturedAt: "2026-10-13T08:00:00Z")
+            model.completePendingManualShot(clubName: nil)
+            model.beginManualShot(latitude: 40.001, longitude: secondLongitude, horizontalAccuracyM: 5,
+                                  capturedAt: "2026-10-13T08:02:00Z")
+            model.completePendingManualShot(clubName: nil)
+            model.startScoringActiveHole()
+            return model.draftFairway
+        }
+        XCTAssertEqual(scoredFairway(secondLongitude: 116.0005, par: 4), .hit)
+        XCTAssertEqual(scoredFairway(secondLongitude: 116.0001, par: 4), .left, "west of a northbound hole")
+        XCTAssertEqual(scoredFairway(secondLongitude: 116.0009, par: 5), .right)
+        XCTAssertNil(scoredFairway(secondLongitude: 116.0005, par: 3))
+    }
+
     func testAdjustDraftClampsAtLowerBounds() {
         let model = seededModel(holes: [hole(1)])
         model.startScoringActiveHole()

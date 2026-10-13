@@ -1134,11 +1134,45 @@ public final class WatchRoundModel: ObservableObject {
         draftPutts = values.putts
         draftPenalty = values.penalty
         draftFairway = hole.fairwayResult.flatMap { WatchFairwayResult(rawValue: $0.uppercased()) }
+            // Owner request 2026-10-12: preselected from where the tee shot landed (the second
+            // shot's origin), the phone's B0 rule; 开球 changes it.
+            ?? (unscored ? teeResultPreselection(for: hole) : nil)
         scoringHole = hole.hole
         self.advanceAfterScoring = advanceAfterSave
         scoreFlowStep = offerRecommendation ? .recommendation : .score
         screen = .scoring
         persistInteractionState()
+    }
+
+    /// 左 / 中 / 右 from the second shot's origin on this hole against the fairway outline (the shared
+    /// `TeeResultClassifier`, as the phone does). Nil on a Par 3, without an outline or without a
+    /// second shot recorded on this Watch.
+    func teeResultPreselection(for hole: WatchRoundState) -> WatchFairwayResult? {
+        guard hole.par != 3, let outline = hole.fairwayOutline, let round else { return nil }
+        // The hole's second shot in the order both devices know (a phone shot counts in place); only
+        // a Watch-recorded second shot has its position here.
+        let ids = knownShotEventIds(for: hole.hole)
+        guard ids.count >= 2,
+              let event = round.pendingEvents.first(where: { $0.eventId == ids[1] && $0.kind == .location }),
+              let second = WatchShotLocationValue(encodedValue: event.value) else { return nil }
+        let refs = (hole.holeImageProjection?.refs ?? []).map { (lat: $0.lat, lon: $0.lon, px: $0.px, py: $0.py) }
+        let route: [[Double]] = (hole.holeMap?.route ?? []).compactMap { row in
+            guard row.count >= 2,
+                  let point = WatchGeoMath.coordinate(fromImagePx: row[0], py: row[1], refs: refs) else { return nil }
+            return [point.latitude, point.longitude]
+        }
+        let result = TeeResultClassifier.classify(
+            point: [second.latitude, second.longitude],
+            outline: outline,
+            route: route,
+            par: hole.par
+        )
+        switch result {
+        case .hit?: return .hit
+        case .left?: return .left
+        case .right?: return .right
+        default: return nil
+        }
     }
 
     // MARK: - hole end (B6)
