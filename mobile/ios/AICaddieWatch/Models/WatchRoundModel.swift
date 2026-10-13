@@ -45,28 +45,6 @@ public enum WatchFairwayResult: String, CaseIterable, Codable, Equatable {
     case right = "RIGHT"
 }
 
-/// B6 本洞成绩 rules (README §3): putts and penalties are wheels that wrap (0 sits under the
-/// maximum), and the total never drops below putts + penalties + 1.
-public enum WatchScoreRules {
-    public static let puttRange = 0...5
-    public static let penaltyRange = 0...4
-    public static let scoreRange = 1...15
-
-    public static func wrap(_ value: Int, in range: ClosedRange<Int>) -> Int {
-        let count = range.count
-        return range.lowerBound + ((value - range.lowerBound) % count + count) % count
-    }
-
-    public static func minimumScore(putts: Int, penalty: Int) -> Int {
-        putts + penalty + 1
-    }
-
-    /// The total for a requested value: inside `scoreRange` and never below the minimum.
-    public static func score(_ requested: Int, putts: Int, penalty: Int) -> Int {
-        min(scoreRange.upperBound, max(requested, minimumScore(putts: putts, penalty: penalty), scoreRange.lowerBound))
-    }
-}
-
 public struct WatchOutcomeSummary: Equatable {
     public let hits: Int
     public let recorded: Int
@@ -1139,11 +1117,17 @@ public final class WatchRoundModel: ObservableObject {
     ) {
         let unscored = hole.score == 0
         let shotCount = recordedShotCount(for: hole.hole)
-        draftScore = unscored
-            ? (shotCount > 0 ? shotCount + 2 : (hole.geometryCoverage == "pending" ? 1 : hole.par))
-            : hole.score
-        draftPutts = unscored ? 2 : hole.putts
-        draftPenalty = hole.penaltyCount
+        // Opened already inside the shared rule (total ≥ putts + penalty + 1, putts/penalty ≤ 9).
+        let values = HoleScoreValues(
+            score: unscored
+                ? (shotCount > 0 ? shotCount + 2 : (hole.geometryCoverage == "pending" ? 1 : hole.par))
+                : hole.score,
+            putts: unscored ? 2 : hole.putts,
+            penalty: hole.penaltyCount
+        )
+        draftScore = values.score
+        draftPutts = values.putts
+        draftPenalty = values.penalty
         draftFairway = hole.fairwayResult.flatMap { WatchFairwayResult(rawValue: $0.uppercased()) }
         scoringHole = hole.hole
         self.advanceAfterScoring = advanceAfterSave
@@ -1454,39 +1438,32 @@ public final class WatchRoundModel: ObservableObject {
         knownShotEventIds(for: hole).count
     }
 
-    public func adjustDraftScore(_ delta: Int) {
-        draftScore = max(1, draftScore + delta)
-        persistInteractionState()
-    }
+    public func adjustDraftScore(_ delta: Int) { setDraftScore(draftScore + delta) }
+    public func adjustDraftPutts(_ delta: Int) { setDraftPutts(draftPutts + delta) }
+    public func adjustDraftPenalty(_ delta: Int) { setDraftPenalty(draftPenalty + delta) }
 
-    public func adjustDraftPutts(_ delta: Int) {
-        draftPutts = max(0, draftPutts + delta)
-        persistInteractionState()
-    }
-
-    public func adjustDraftPenalty(_ delta: Int) {
-        draftPenalty = max(0, draftPenalty + delta)
-        persistInteractionState()
-    }
-
-    // B6 one-screen 本洞成绩.
+    // 本洞成绩: the rule the phone uses (`HoleScoreValues`, README §3). The total is what the
+    // player chose: more putts or penalties raise it only when they must, fewer never lower it, and
+    // a lower total gives way by lowering putts, then penalties. No wrapping and no cap on the total.
 
     public func setDraftScore(_ value: Int) {
-        draftScore = WatchScoreRules.score(value, putts: draftPutts, penalty: draftPenalty)
-        persistInteractionState()
+        applyDraftValues { $0.selectScore(value) }
     }
 
-    /// Putts wrap 0–5; the total is raised when it would fall below putts + penalties + 1.
     public func setDraftPutts(_ value: Int) {
-        draftPutts = WatchScoreRules.wrap(value, in: WatchScoreRules.puttRange)
-        draftScore = WatchScoreRules.score(draftScore, putts: draftPutts, penalty: draftPenalty)
-        persistInteractionState()
+        applyDraftValues { $0.selectPutts(value) }
     }
 
-    /// Penalties wrap 0–4; the total is raised when it would fall below putts + penalties + 1.
     public func setDraftPenalty(_ value: Int) {
-        draftPenalty = WatchScoreRules.wrap(value, in: WatchScoreRules.penaltyRange)
-        draftScore = WatchScoreRules.score(draftScore, putts: draftPutts, penalty: draftPenalty)
+        applyDraftValues { $0.selectPenalty(value) }
+    }
+
+    private func applyDraftValues(_ change: (inout HoleScoreValues) -> Bool) {
+        var values = HoleScoreValues(score: draftScore, putts: draftPutts, penalty: draftPenalty)
+        guard change(&values) else { return }
+        draftScore = values.score
+        draftPutts = values.putts
+        draftPenalty = values.penalty
         persistInteractionState()
     }
 

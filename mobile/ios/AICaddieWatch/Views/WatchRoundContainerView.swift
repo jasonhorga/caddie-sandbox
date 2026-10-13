@@ -351,7 +351,8 @@ public struct WatchRoundContainerView: View {
             )
         } else {
             activeScreen
-                .overlay(alignment: .bottom) { undoableShotStrip }
+                // 本洞成绩 uses the whole window down to 保存: the strip goes to the top there.
+                .overlay(alignment: model.screen == .scoring ? .top : .bottom) { undoableShotStrip }
                 .task(id: model.pendingManualShot?.capturedAt) {
                     // B6: a detected shot is recorded once its undo window passes.
                     guard model.undoableShotText != nil else { return }
