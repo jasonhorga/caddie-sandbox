@@ -1,9 +1,10 @@
 import SwiftUI
 import AICaddieDomain
 
-/// The Watch turn (B4b-2 §7): the first half of an 18-hole course is finished, choose the second
-/// nine with the shared `NineLoopPlan` — 前九 / 后九 (the other half preselected, the same half
-/// allowed) or 只打 9 洞. The chosen half continues the same round on holes 10–18.
+/// The Watch turn (B4b-2 §7): the first nine is finished — half of an 18-hole course or one loop of
+/// an A / B / C venue — choose the second with the shared `NineLoopPlan`: 前九 / 后九 or the venue's
+/// loops (the next one preselected, the same one allowed), or 只打 9 洞. The choice continues the
+/// same round on holes 10–18, and can still change until hole 10 is played.
 public struct WatchTurnView: View {
     public let plan: NineLoopPlan
     public let isLoading: Bool
@@ -35,11 +36,14 @@ public struct WatchTurnView: View {
     /// One row per half in course order, then 只打 9 洞. `id` is the accessibility identifier.
     static func choices(for plan: NineLoopPlan) -> [WatchRoundSetupChoicePresentation] {
         let halves = plan.course.loops.map { loop -> WatchRoundSetupChoicePresentation in
-            let half = loop.id.split(separator: ":").last.map(String.init) ?? loop.id
-            // The printed (physical) holes of the half, never the round positions 10–18.
-            let printed = half == "back" ? "第 10–18 洞" : "第 1–9 洞"
+            let fields = loop.id.split(separator: ":").map(String.init)
+            let half = fields.last ?? loop.id
+            // The printed (physical) holes of a half, never the round positions 10–18; a nine-hole
+            // loop of an A / B / C venue is just its nine holes.
+            let printed = half == "all" ? "9 洞" : (half == "back" ? "第 10–18 洞" : "第 1–9 洞")
+            let id = half == "all" ? "watch-turn-loop-\(fields.first ?? loop.id)" : "watch-turn-half-\(half)"
             return WatchRoundSetupChoicePresentation(
-                id: "watch-turn-half-\(half)",
+                id: id,
                 title: loop.displayName,
                 detail: loop.id == plan.first ? "再打一次 · \(printed)" : printed,
                 isSelected: plan.second == .loop(loop.id)
@@ -154,6 +158,10 @@ public struct WatchTurnView: View {
 
     private func second(for choiceId: String) -> NineLoopPlan.Second {
         guard choiceId != "watch-turn-stop-after-nine" else { return .stopAfterNine }
+        if choiceId.hasPrefix("watch-turn-loop-") {
+            let id = "\(choiceId.dropFirst("watch-turn-loop-".count)):all"
+            return plan.course.hasLoop(id) ? .loop(id) : .stopAfterNine
+        }
         let half = String(choiceId.dropFirst("watch-turn-half-".count))
         let loop = plan.course.loops.first { $0.id.hasSuffix(":\(half)") }
         return loop.map { .loop($0.id) } ?? .stopAfterNine

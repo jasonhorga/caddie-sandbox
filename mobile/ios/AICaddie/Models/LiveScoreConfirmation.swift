@@ -151,7 +151,8 @@ public struct LiveScoreDraft: Codable, Equatable, Identifiable {
     }
 
     public mutating func adjustPenalty(by delta: Int) {
-        apply { $0.selectPenalty(penalty + delta) }
+        let next = penalty + delta
+        apply { $0.selectPenalty(next) }
     }
 
     /// One shared rule for phone and Watch (`HoleScoreValues`).

@@ -1,6 +1,7 @@
 import CoreLocation
 import Foundation
 import XCTest
+import AICaddieDomain
 @testable import AICaddieWatch
 
 @MainActor
@@ -1943,6 +1944,59 @@ final class WatchRoundModelTests: XCTestCase {
         model.saveManualScore()
         XCTAssertEqual(model.allHoleStates.first?.score, 8)
         XCTAssertEqual(model.activeHole, 2)
+    }
+
+    /// Owner request 2026-10-12: an A / B / C venue started as one nine gets the turn too (S70 ends
+    /// the round there), and a wrong second loop can be changed until it is played.
+    func testANineHoleLoopVenueTurnsToAnotherLoopAndTheChoiceCanChange() async {
+        let model = WatchRoundModel(
+            store: makeStore(),
+            persistAutoShotEnabled: { _ in },
+            makeEventId: sequentialIds(),
+            now: { "2026-10-13T00:00:00Z" }
+        )
+        model.nineLoopSiblings = { _ in
+            [NineLoop(id: "100:all", name: "A"), NineLoop(id: "200:all", name: "B"), NineLoop(id: "300:all", name: "C")]
+        }
+        final class Requests { var keys: [String?] = [] }
+        let requests = Requests()
+        model.secondLoopLoader = { request in
+            requests.keys.append(request.loopKey)
+            guard let key = request.loopKey, let second = request.secondNineLoopGlobalId else {
+                return .unavailable("no")
+            }
+            let states = (10...18).map {
+                WatchRoundState(
+                    roundId: "server", hole: $0, par: 4, distanceM: nil, selectedClub: nil,
+                    globalId: second, sourceLocalHole: $0 - 9, courseHoleNumber: $0,
+                    score: 0, putts: 0, penaltyCount: 0, caddieConfidence: "offline"
+                )
+            }
+            return .ready(loopKey: key, holeStates: states)
+        }
+        model.seedRound(courseHoles("100:all"), activeHole: 9, courseName: "黑骑士 · A 场", loopKey: "100:all")
+        XCTAssertFalse(model.isAtTurn)
+        model.startScoringActiveHole()
+        model.startManualScoreEntry()
+        model.saveManualScore()
+        XCTAssertEqual(model.screen, .turn, "the turn, not the end of the round")
+        XCTAssertEqual(model.turnPlan?.course.loops.map(\.id), ["100:all", "200:all", "300:all"])
+        XCTAssertEqual(model.turnPlan?.second, .loop("200:all"), "the next loop is preselected")
+
+        await model.confirmTurn()
+        XCTAssertEqual(requests.keys.last, "100:all+200:all")
+        XCTAssertEqual(model.round?.loopKey, "100:all+200:all")
+        XCTAssertEqual(model.activeHole, 10)
+        XCTAssertEqual(model.round?.holeStates.first { $0.hole == 10 }?.globalId, 200)
+
+        XCTAssertTrue(model.canChangeSecondNine)
+        model.openChangeSecondNine()
+        XCTAssertEqual(model.turnPlan?.second, .loop("200:all"))
+        model.chooseTurnSecond(.loop("300:all"))
+        await model.confirmTurn()
+        XCTAssertEqual(model.round?.loopKey, "100:all+300:all")
+        XCTAssertEqual(model.round?.holeStates.filter { $0.hole >= 10 }.compactMap(\.globalId), Array(repeating: 300, count: 9))
+        XCTAssertEqual(model.round?.holeStates.count, 18)
     }
 
     func testAdjustDraftClampsAtLowerBounds() {

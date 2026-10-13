@@ -1015,7 +1015,9 @@ final class WatchDesignSnapshotTests: XCTestCase {
         let frontFirst = try XCTUnwrap(WatchRoundModel.makeTurnPlan(loopKey: "31795:front"))
         XCTAssertEqual(frontFirst.second, .loop("31795:back"))
         XCTAssertNil(WatchRoundModel.makeTurnPlan(loopKey: "31795:front+31795:back"))
-        XCTAssertNil(WatchRoundModel.makeTurnPlan(loopKey: "301:all"))
+        // A nine-hole loop has a turn too (#424): with no known siblings, the same loop again or 只打 9 洞.
+        let nine = try XCTUnwrap(WatchRoundModel.makeTurnPlan(loopKey: "301:all"))
+        XCTAssertEqual(nine.course.loops.map(\.id), ["301:all"])
     }
 
     @MainActor

@@ -233,6 +233,9 @@ public final class WatchRoundModel: ObservableObject {
 
     /// Resolves round holes 10–18 for the turn (the app wires `WatchCourseLibrary.secondLoop`).
     public var secondLoopLoader: ((WatchSecondLoopRequest) async -> WatchSecondLoopResult)?
+    /// A nine-hole-loop venue's loops (A / B / C, the played one included) for a loop's course id,
+    /// from the course library: the choices at its turn. Nil or empty offers the same loop again.
+    public var nineLoopSiblings: ((Int) -> [NineLoop])?
 
     /// Backend connection info delivered from the phone (round-12 P3.4, WCSession). When nil the watch
     /// can still score offline; uploads just fail and events stay queued.
@@ -1644,13 +1647,14 @@ public final class WatchRoundModel: ObservableObject {
 
     // MARK: - the turn (B4b-2 §7)
 
-    /// The round is one half of an 18-hole course (`G:front` / `G:back`) and its ninth hole is the
-    /// scored live hole: the second nine can be chosen.
+    /// The round is one nine — half of an 18-hole course (`G:front` / `G:back`) or one loop of an
+    /// A / B / C venue (`G:all`) — and its ninth hole is the scored live hole: the second nine can
+    /// be chosen (S70 ends the round here instead).
     public var isAtTurn: Bool {
         guard let round,
               let loopKey = round.loopKey,
-              let loop = WatchCourseSelection.halfLoop(loopKey: loopKey),
-              loop.halves.count == 1,
+              WatchCourseSelection.halfLoop(loopKey: loopKey)?.halves.count == 1
+                || WatchCourseSelection.nineLoopIds(loopKey: loopKey)?.count == 1,
               round.holeStates.map(\.hole).max() == 9,
               activeHole == 9,
               (round.holeStates.first(where: { $0.hole == 9 })?.score ?? 0) > 0 else {
@@ -1661,7 +1665,22 @@ public final class WatchRoundModel: ObservableObject {
 
     /// The shared plan for a one-half round at its turn: loops 前九 / 后九 (ids `G:front` /
     /// `G:back`), the other half preselected.
-    public static func makeTurnPlan(loopKey: String) -> NineLoopPlan? {
+    public static func makeTurnPlan(loopKey: String, nineLoopSiblings: [NineLoop] = []) -> NineLoopPlan? {
+        if let ids = WatchCourseSelection.nineLoopIds(loopKey: loopKey), ids.count == 1 {
+            // A nine-hole-loop venue (B4b-2 §7, the phone's `NineLoopTurn`): its loops in course
+            // order, the played one always included so it can be played again.
+            let firstId = "\(ids[0]):all"
+            var loops = nineLoopSiblings
+            if !loops.contains(where: { $0.id == firstId }) {
+                loops.insert(NineLoop(id: firstId, name: "这 9 洞"), at: 0)
+            }
+            guard var plan = NineLoopPlan(course: NineLoopCourse(id: firstId, loops: loops), first: firstId) else {
+                return nil
+            }
+            plan.beginFirstLoop()
+            plan.reachTurn()
+            return plan
+        }
         guard let loop = WatchCourseSelection.halfLoop(loopKey: loopKey), loop.halves.count == 1 else {
             return nil
         }
@@ -1680,7 +1699,7 @@ public final class WatchRoundModel: ObservableObject {
     public func openTurn() {
         guard isAtTurn, let loopKey = round?.loopKey else { return }
         if turnPlan == nil || isChangingSecondNine {
-            turnPlan = Self.makeTurnPlan(loopKey: loopKey)
+            turnPlan = Self.makeTurnPlan(loopKey: loopKey, nineLoopSiblings: siblingLoops(of: loopKey))
         }
         guard turnPlan != nil else { return }
         isChangingSecondNine = false
@@ -1693,7 +1712,7 @@ public final class WatchRoundModel: ObservableObject {
     /// round hole from 10). A wrong tap at the turn is therefore never final.
     public var canChangeSecondNine: Bool {
         guard let round, round.secondNineAddedAtTurn == true, let loopKey = round.loopKey,
-              let loop = WatchCourseSelection.halfLoop(loopKey: loopKey), loop.halves.count == 2,
+              WatchCourseSelection.roundRows(loopKey: loopKey)?.count == 18,
               Set(round.holeStates.map(\.hole)) == Set(1...18) else { return false }
         let secondHoles = 10...18
         let started = round.holeStates.contains { secondHoles.contains($0.hole) && $0.score > 0 }
@@ -1706,10 +1725,13 @@ public final class WatchRoundModel: ObservableObject {
 
     /// 换一个 9 洞: the turn screen again, with the current second nine selected.
     public func openChangeSecondNine() {
-        guard canChangeSecondNine, let loopKey = round?.loopKey,
-              let loop = WatchCourseSelection.halfLoop(loopKey: loopKey),
-              var plan = Self.makeTurnPlan(loopKey: "\(loop.globalId):\(loop.halves[0])") else { return }
-        plan.chooseSecond(.loop("\(loop.globalId):\(loop.halves[1])"))
+        guard canChangeSecondNine, let loopKey = round?.loopKey else { return }
+        let parts = loopKey.split(separator: "+").map(String.init)
+        guard parts.count == 2,
+              var plan = Self.makeTurnPlan(loopKey: parts[0], nineLoopSiblings: siblingLoops(of: parts[0])) else {
+            return
+        }
+        plan.chooseSecond(.loop(parts[1]))
         turnPlan = plan
         isChangingSecondNine = true
         turnMessage = nil
@@ -1763,8 +1785,8 @@ public final class WatchRoundModel: ObservableObject {
             screen = .home
             return
         }
-        guard let half = secondId.split(separator: ":").last.map(String.init),
-              let loader = secondLoopLoader else {
+        let secondFields = secondId.split(separator: ":").map(String.init)
+        guard secondFields.count == 2, let loader = secondLoopLoader else {
             turnMessage = "暂时无法准备第二个 9 洞，请重试"
             return
         }
@@ -1773,8 +1795,9 @@ public final class WatchRoundModel: ObservableObject {
         let result = await loader(WatchSecondLoopRequest(
             roundId: current.roundId,
             firstLoopKey: firstLoopKey,
-            secondHalf: half,
-            teeBox: current.teeBox
+            secondHalf: secondFields[1],
+            teeBox: current.teeBox,
+            secondNineLoopGlobalId: secondFields[1] == "all" ? Int(secondFields[0]) : nil
         ))
         isLoadingSecondLoop = false
         guard round?.roundId == current.roundId, screen == .turn else { return }
@@ -1813,18 +1836,19 @@ public final class WatchRoundModel: ObservableObject {
             current.greenPlacements = current.greenPlacements?.filter { $0.hole <= 9 }
             current.loopKey = String(first)
         }
+        // The canonical table for the pair (halves of one course, or two nine-hole loops).
         guard let firstLoopKey = current.loopKey,
               loopKey.hasPrefix(firstLoopKey + "+"),
-              let loop = WatchCourseSelection.halfLoop(loopKey: loopKey),
-              loop.halves.count == 2,
+              let rows = WatchCourseSelection.roundRows(loopKey: loopKey), rows.count == 18,
               Set(current.holeStates.map(\.hole)) == Set(1...9) else {
             return false
         }
         let second = states.sorted { $0.hole < $1.hole }
-        let start = WatchCourseSelection.physicalStartHole(loop.halves[1])
-        guard second.map(\.hole) == Array(10...18) else { return false }
-        for (offset, state) in second.enumerated() {
-            guard state.globalId == loop.globalId, state.sourceLocalHole == start + offset else {
+        let secondRows = rows.filter { $0.number >= 10 }
+        guard second.map(\.hole) == secondRows.map(\.number) else { return false }
+        for (state, row) in zip(second, secondRows) {
+            guard state.globalId == row.globalId,
+                  (state.sourceLocalHole ?? row.sourceLocalHole) == row.sourceLocalHole else {
                 return false
             }
         }
@@ -1844,6 +1868,12 @@ public final class WatchRoundModel: ObservableObject {
             pendingHoleEnd = nil
         }
         return true
+    }
+
+    /// The venue's nine-hole loops for a `G:all` loop key (empty for halves).
+    private func siblingLoops(of loopKey: String) -> [NineLoop] {
+        guard let ids = WatchCourseSelection.nineLoopIds(loopKey: loopKey), ids.count == 1 else { return [] }
+        return nineLoopSiblings?(ids[0]) ?? []
     }
 
     /// 只打 9 洞 after a second nine was added but not played: holes 10–18 go, the round is the first

@@ -1,3 +1,4 @@
+import AICaddieDomain
 import CoreMotion
 import SwiftUI
 import WatchKit
@@ -222,6 +223,12 @@ public struct AICaddieWatchApp: App {
                     // the ordered package online, else the installed whole-course template.
                     roundModel.secondLoopLoader = { [courseLibrary, syncClient] request in
                         await courseLibrary.secondLoop(request, config: syncClient.config)
+                    }
+                    // An A / B / C venue's loops for its turn, named by the course's own loop label.
+                    roundModel.nineLoopSiblings = { [courseLibrary] globalId in
+                        courseLibrary.nineLoopSiblings(of: globalId).map { option in
+                            NineLoop(id: "\(option.globalId):all", name: option.resolvedSegmentLabel ?? option.name)
+                        }
                     }
                     reconcileLocationServices()
                     syncClient.requestConfigurationFromPhone()

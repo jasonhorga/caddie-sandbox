@@ -816,6 +816,9 @@ public final class WatchCourseLibrary: ObservableObject {
         _ request: WatchSecondLoopRequest,
         config: WatchRoundConfig?
     ) async -> WatchSecondLoopResult {
+        if request.secondNineLoopGlobalId != nil {
+            return await secondNineLoop(request, config: config)
+        }
         guard let loopKey = request.loopKey,
               let loop = WatchCourseSelection.halfLoop(loopKey: loopKey),
               loop.halves.count == 2 else {
@@ -877,6 +880,140 @@ public final class WatchCourseLibrary: ObservableObject {
         }
         return .unavailable(config == nil
             ? "离线：本机没有这座球场的整场下载，暂时无法接着打\(secondName)。联网后重试。"
+            : "无法获取\(secondName)的球场数据，请检查网络后重试。")
+    }
+
+    /// Every option this Watch knows: the catalogue and the installed templates' own options.
+    private var knownOptions: [WatchCourseOption] {
+        courses + store.loadCourses().flatMap { [$0.option] + ($0.backOption.map { [$0] } ?? []) }
+    }
+
+    /// The venue's nine-hole loops for a nine-hole course (itself included) in loop-label order,
+    /// from the catalogue and installed templates: the choices at a nine-hole-loop venue's turn.
+    public func nineLoopSiblings(of globalId: Int) -> [WatchCourseOption] {
+        let known = knownOptions
+        guard let first = known.first(where: { $0.globalId == globalId }),
+              first.playableHoleCount == 9 else { return [] }
+        func venue(_ option: WatchCourseOption) -> String {
+            GarminCourseNameAuthority.canonicalVenueName(
+                providerName: option.name,
+                venueName: option.venueName,
+                venueNameSource: option.venueNameSource,
+                segmentLabel: option.segmentLabel
+            )
+        }
+        let name = venue(first)
+        var seen = Set<Int>()
+        return known
+            .filter { $0.playableHoleCount == 9 && venue($0) == name && seen.insert($0.globalId).inserted }
+            .sorted { lhs, rhs in
+                let left = lhs.resolvedSegmentLabel?.lowercased() ?? ""
+                let right = rhs.resolvedSegmentLabel?.lowercased() ?? ""
+                return left == right ? lhs.globalId < rhs.globalId : left < right
+            }
+    }
+
+    /// The second loop of a nine-hole-loop venue (`A:all` → `A:all+B:all`, B may be A again): the
+    /// ordered pairing package online, else an installed pairing, else the installed loop itself
+    /// renumbered 10–18. Holes are never invented.
+    private func secondNineLoop(
+        _ request: WatchSecondLoopRequest,
+        config: WatchRoundConfig?
+    ) async -> WatchSecondLoopResult {
+        guard let loopKey = request.loopKey,
+              let ids = WatchCourseSelection.nineLoopIds(loopKey: loopKey), ids.count == 2,
+              let rows = WatchCourseSelection.roundRows(loopKey: loopKey) else {
+            return .unavailable("这一局不能接着打第二个 9 洞")
+        }
+        let known = knownOptions
+        let secondOption = known.first { $0.globalId == ids[1] }
+        let secondName = secondOption?.segmentDisplayTitle ?? "第二个 9 洞"
+        let firstTemplate = store.course(loopKey: request.firstLoopKey, teeBox: request.teeBox)
+        let teeBox = request.teeBox ?? firstTemplate?.teeBox
+        let secondRows = rows.filter { $0.number >= 10 }
+
+        func checked(_ states: [WatchRoundState]) -> [WatchRoundState]? {
+            let second = states.filter { $0.hole >= 10 }.sorted { $0.hole < $1.hole }
+            guard second.map(\.hole) == secondRows.map(\.number) else { return nil }
+            for (state, row) in zip(second, secondRows) {
+                guard state.globalId == row.globalId,
+                      (state.sourceLocalHole ?? row.sourceLocalHole) == row.sourceLocalHole else { return nil }
+            }
+            return second
+        }
+
+        if let config,
+           let first = firstTemplate?.option ?? known.first(where: { $0.globalId == ids[0] }),
+           let second = secondOption {
+            let selection = WatchCourseSelection(
+                front: first,
+                back: second,
+                teeBox: teeBox ?? first.preferredTee
+            )
+            do {
+                let download = try await fetchCourseDownload(
+                    selection,
+                    roundId: request.roundId,
+                    config: config,
+                    backgroundGeometry: true,
+                    includePreparedGeometry: false
+                )
+                try persist(download)
+                if let states = checked(download.template.makeRound(roundId: request.roundId).holeStates) {
+                    errorMessage = nil
+                    return .ready(loopKey: loopKey, holeStates: states)
+                }
+            } catch {
+                diagnosticErrorMessage = "第二个 9 洞下载失败: \(error.localizedDescription)"
+            }
+        }
+
+        if let installed = store.course(loopKey: loopKey, teeBox: teeBox),
+           let states = checked(installed.makeRound(roundId: request.roundId).holeStates) {
+            errorMessage = nil
+            return .ready(loopKey: loopKey, holeStates: states)
+        }
+        if let single = store.course(loopKey: "\(ids[1]):all", teeBox: teeBox) {
+            // The loop on its own is round holes 1–9; as the second loop it is 10–18 (printed
+            // 10–18, the server's rule for a nine-hole loop in second place).
+            let renumbered = single.holeStates
+                .filter { $0.globalId == ids[1] && (1...9).contains($0.hole) }
+                .sorted { $0.hole < $1.hole }
+                .map { state -> WatchRoundState in
+                    let number = state.hole + 9
+                    if let revision = state.geometryRevision,
+                       !revision.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       let data = imageStore.data(globalId: ids[1], hole: state.hole, geometryRevision: revision) {
+                        try? imageStore.store(data: data, globalId: ids[1], hole: number, geometryRevision: revision)
+                    }
+                    return state.replacingRoundId(
+                        request.roundId,
+                        hole: number,
+                        sourceLocalHole: state.sourceLocalHole ?? state.hole,
+                        courseHoleNumber: number
+                    )
+                }
+            if let states = checked(renumbered) {
+                // Keep the pairing as its own template so the round's later precise-map upgrade
+                // (keyed by the round's loop key) finds it, as `projectedTemplate` does for halves.
+                if let firstTemplate, let secondOption {
+                    let firstNine = firstTemplate.holeStates.filter { (1...9).contains($0.hole) }
+                    try? store.save(WatchCourseTemplate(
+                        option: firstTemplate.option,
+                        backOption: secondOption,
+                        loopKey: loopKey,
+                        courseName: firstTemplate.courseName,
+                        teeBox: firstTemplate.teeBox,
+                        holeStates: firstNine + states.map { $0.replacingRoundId("template") },
+                        cachedAt: now()
+                    ))
+                }
+                errorMessage = nil
+                return .ready(loopKey: loopKey, holeStates: states)
+            }
+        }
+        return .unavailable(config == nil
+            ? "离线：本机没有\(secondName)的下载，暂时无法接着打。联网后重试。"
             : "无法获取\(secondName)的球场数据，请检查网络后重试。")
     }
 

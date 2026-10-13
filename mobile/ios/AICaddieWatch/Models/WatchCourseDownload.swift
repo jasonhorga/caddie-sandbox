@@ -415,6 +415,19 @@ public struct WatchCourseSelection: Equatable {
         return value
     }
 
+    /// One or two nine-hole loops (`A:all`, `A:all+B:all`): their course ids in play order, else nil.
+    public static func nineLoopIds(loopKey: String) -> [Int]? {
+        let parts = loopKey.split(separator: "+", omittingEmptySubsequences: false)
+        guard (1...2).contains(parts.count) else { return nil }
+        var ids: [Int] = []
+        for part in parts {
+            let fields = part.split(separator: ":", omittingEmptySubsequences: false)
+            guard fields.count == 2, fields[1] == "all", let id = Int(fields[0]), id > 0 else { return nil }
+            ids.append(id)
+        }
+        return ids
+    }
+
     /// One or two halves of one 18-hole course (`G:back`, `G:back+G:front`, ...), else nil.
     public static func halfLoop(loopKey: String) -> (globalId: Int, halves: [String])? {
         let entries = loopKey.split(separator: "+").map { $0.split(separator: ":").map(String.init) }
@@ -1133,16 +1146,29 @@ public struct WatchSecondLoopRequest: Equatable {
     /// `"front"` / `"back"`; the same half as the first loop is allowed.
     public let secondHalf: String
     public let teeBox: String?
+    /// A nine-hole-loop venue (A / B / C): the second loop's course id, with `firstLoopKey` `G:all`.
+    public let secondNineLoopGlobalId: Int?
 
-    public init(roundId: String, firstLoopKey: String, secondHalf: String, teeBox: String?) {
+    public init(
+        roundId: String,
+        firstLoopKey: String,
+        secondHalf: String,
+        teeBox: String?,
+        secondNineLoopGlobalId: Int? = nil
+    ) {
         self.roundId = roundId
         self.firstLoopKey = firstLoopKey
         self.secondHalf = secondHalf
         self.teeBox = teeBox
+        self.secondNineLoopGlobalId = secondNineLoopGlobalId
     }
 
-    /// `G:first+G:second`, or nil when `firstLoopKey` is not one half of an 18-hole course.
+    /// `G:first+G:second` for halves, `A:all+B:all` for nine-hole loops, else nil.
     public var loopKey: String? {
+        if let second = secondNineLoopGlobalId {
+            guard WatchCourseSelection.nineLoopIds(loopKey: firstLoopKey)?.count == 1 else { return nil }
+            return "\(firstLoopKey)+\(second):all"
+        }
         guard let loop = WatchCourseSelection.halfLoop(loopKey: firstLoopKey),
               loop.halves.count == 1,
               let second = WatchCourseSelection.normalizedHalf(secondHalf) else { return nil }
