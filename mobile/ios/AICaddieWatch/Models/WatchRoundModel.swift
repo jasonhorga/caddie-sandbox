@@ -225,6 +225,8 @@ public final class WatchRoundModel: ObservableObject {
     /// same half allowed, 只打 9 洞). Nil outside the turn.
     @Published public private(set) var turnPlan: NineLoopPlan?
     @Published public private(set) var isLoadingSecondLoop = false
+    /// The turn screen is open to change (or drop) a second nine that has not been played yet.
+    @Published public private(set) var isChangingSecondNine = false
     /// Honest reason the chosen second nine could not be prepared (offline without a whole-course
     /// download, network failure). The round stays at the turn; nothing is invented.
     @Published public private(set) var turnMessage: String?
@@ -1677,10 +1679,39 @@ public final class WatchRoundModel: ObservableObject {
 
     public func openTurn() {
         guard isAtTurn, let loopKey = round?.loopKey else { return }
-        if turnPlan == nil {
+        if turnPlan == nil || isChangingSecondNine {
             turnPlan = Self.makeTurnPlan(loopKey: loopKey)
         }
         guard turnPlan != nil else { return }
+        isChangingSecondNine = false
+        turnMessage = nil
+        screen = .turn
+    }
+
+    /// The second nine can still change, or be dropped, until anything is recorded on it: the
+    /// phone's rule (README §8, `NineLoopPlan.canChangeSecond`; the phone locks on any event on a
+    /// round hole from 10). A wrong tap at the turn is therefore never final.
+    public var canChangeSecondNine: Bool {
+        guard let round, round.secondNineAddedAtTurn == true, let loopKey = round.loopKey,
+              let loop = WatchCourseSelection.halfLoop(loopKey: loopKey), loop.halves.count == 2,
+              Set(round.holeStates.map(\.hole)) == Set(1...18) else { return false }
+        let secondHoles = 10...18
+        let started = round.holeStates.contains { secondHoles.contains($0.hole) && $0.score > 0 }
+            || round.pendingEvents.contains { secondHoles.contains($0.hole) }
+            || secondHoles.contains { !knownShotEventIds(for: $0).isEmpty }
+            || pendingManualShot.map { secondHoles.contains($0.hole) } == true
+            || scoringHole.map { secondHoles.contains($0) } == true
+        return !started
+    }
+
+    /// 换一个 9 洞: the turn screen again, with the current second nine selected.
+    public func openChangeSecondNine() {
+        guard canChangeSecondNine, let loopKey = round?.loopKey,
+              let loop = WatchCourseSelection.halfLoop(loopKey: loopKey),
+              var plan = Self.makeTurnPlan(loopKey: "\(loop.globalId):\(loop.halves[0])") else { return }
+        plan.chooseSecond(.loop("\(loop.globalId):\(loop.halves[1])"))
+        turnPlan = plan
+        isChangingSecondNine = true
         turnMessage = nil
         screen = .turn
     }
@@ -1691,9 +1722,14 @@ public final class WatchRoundModel: ObservableObject {
         turnMessage = nil
     }
 
-    /// Back to the ninth hole (e.g. to fix its score); the turn is offered again on 下一洞.
+    /// Back to the ninth hole (e.g. to fix its score); the turn is offered again on 下一洞. When
+    /// changing the second nine, back to the round as it was.
     public func leaveTurn() {
         guard screen == .turn, !isLoadingSecondLoop else { return }
+        if isChangingSecondNine {
+            isChangingSecondNine = false
+            turnPlan = nil
+        }
         turnMessage = nil
         screen = .home
     }
@@ -1703,11 +1739,28 @@ public final class WatchRoundModel: ObservableObject {
         guard screen == .turn, !isLoadingSecondLoop,
               var plan = turnPlan,
               let current = round,
-              let firstLoopKey = current.loopKey else { return }
+              let currentLoopKey = current.loopKey else { return }
+        let changing = isChangingSecondNine
+        let firstLoopKey = changing
+            ? String(currentLoopKey.split(separator: "+").first ?? Substring(currentLoopKey))
+            : currentLoopKey
         guard case .loop(let secondId) = plan.second else {
+            if changing {
+                guard dropSecondNine() else {
+                    turnMessage = "暂时无法改成只打 9 洞，请重试"
+                    return
+                }
+            }
             plan.finishAfterNine()
             turnPlan = nil
             requestFinish()
+            return
+        }
+        if changing, currentLoopKey == "\(firstLoopKey)+\(secondId)" {
+            // The same nine: nothing to change.
+            isChangingSecondNine = false
+            turnPlan = nil
+            screen = .home
             return
         }
         guard let half = secondId.split(separator: ":").last.map(String.init),
@@ -1727,9 +1780,10 @@ public final class WatchRoundModel: ObservableObject {
         guard round?.roundId == current.roundId, screen == .turn else { return }
         switch result {
         case .ready(let loopKey, let states):
-            if applySecondLoop(states, loopKey: loopKey) {
+            if applySecondLoop(states, loopKey: loopKey, replacingSecondNine: changing) {
                 plan.beginSecondLoop()
                 turnPlan = nil
+                isChangingSecondNine = false
                 screen = .home
             } else {
                 turnMessage = "第二个 9 洞数据不完整，请重试"
@@ -1742,10 +1796,24 @@ public final class WatchRoundModel: ObservableObject {
     /// Append the second nine to the same round: holes 1–9, every score and every pending event
     /// stay; holes 10–18 are the chosen half's physical holes in play order; the round's loop key
     /// becomes `G:first+G:second` so a relaunch restores the ordered table.
+    /// With `replacingSecondNine` an unplayed second nine (`canChangeSecondNine`) is swapped for
+    /// the new one.
     @discardableResult
-    public func applySecondLoop(_ states: [WatchRoundState], loopKey: String) -> Bool {
-        guard var current = round,
-              let firstLoopKey = current.loopKey,
+    public func applySecondLoop(
+        _ states: [WatchRoundState],
+        loopKey: String,
+        replacingSecondNine: Bool = false
+    ) -> Bool {
+        guard var current = round else { return false }
+        if replacingSecondNine {
+            guard canChangeSecondNine, let first = current.loopKey?.split(separator: "+").first else {
+                return false
+            }
+            current.holeStates = current.holeStates.filter { $0.hole <= 9 }
+            current.greenPlacements = current.greenPlacements?.filter { $0.hole <= 9 }
+            current.loopKey = String(first)
+        }
+        guard let firstLoopKey = current.loopKey,
               loopKey.hasPrefix(firstLoopKey + "+"),
               let loop = WatchCourseSelection.halfLoop(loopKey: loopKey),
               loop.halves.count == 2,
@@ -1763,12 +1831,40 @@ public final class WatchRoundModel: ObservableObject {
         current.holeStates += second.map { $0.replacingRoundId(current.roundId) }
         current.loopKey = loopKey
         current.activeHole = 10
+        current.secondNineAddedAtTurn = true
         do {
             try store.save(current)
         } catch {
             return false
         }
         round = current
+        if replacingSecondNine {
+            // Hole 10 is a different hole now: its green and next tee are rebuilt.
+            holeEndDetector = nil
+            pendingHoleEnd = nil
+        }
+        return true
+    }
+
+    /// 只打 9 洞 after a second nine was added but not played: holes 10–18 go, the round is the first
+    /// nine again (its loop key too), on its ninth hole.
+    private func dropSecondNine() -> Bool {
+        guard canChangeSecondNine, var current = round,
+              let first = current.loopKey?.split(separator: "+").first else { return false }
+        current.holeStates = current.holeStates.filter { $0.hole <= 9 }
+        current.greenPlacements = current.greenPlacements?.filter { $0.hole <= 9 }
+        current.loopKey = String(first)
+        current.activeHole = 9
+        current.secondNineAddedAtTurn = nil
+        do {
+            try store.save(current)
+        } catch {
+            return false
+        }
+        round = current
+        holeEndDetector = nil
+        pendingHoleEnd = nil
+        isChangingSecondNine = false
         return true
     }
 

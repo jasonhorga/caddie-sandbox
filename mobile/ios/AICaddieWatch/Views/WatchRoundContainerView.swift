@@ -412,6 +412,7 @@ public struct WatchRoundContainerView: View {
                 hasHazards: model.hazardDetailAvailable,
                 hasClubStats: model.clubStatsAvailable,
                 hasFlagDirection: activeFlagCoordinate != nil,
+                canChangeSecondNine: model.canChangeSecondNine,
                 onViewGreen: { model.openViewGreen() },
                 onCaddie: { model.openCaddie() },
                 onHazards: { model.openHazards() },
@@ -421,6 +422,7 @@ public struct WatchRoundContainerView: View {
                 onSettings: { model.openSettings() },
                 onFlagDirection: { model.openFlagDirection() },
                 onFinish: { model.requestFinish() },
+                onChangeSecondNine: { model.openChangeSecondNine() },
                 onBack: { model.backToHome() }
             )
         case .viewGreen:
@@ -534,6 +536,7 @@ public struct WatchRoundContainerView: View {
                     plan: plan,
                     isLoading: model.isLoadingSecondLoop,
                     message: model.turnMessage,
+                    isChange: model.isChangingSecondNine,
                     onChoose: { model.chooseTurnSecond($0) },
                     onConfirm: { Task { await model.confirmTurn() } },
                     onBack: { model.leaveTurn() }

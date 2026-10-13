@@ -117,6 +117,9 @@ public final class WatchRoundStore {
         /// Per hole, the phone's newest known shot set (`WatchRoundState.phoneShotEventIds`). Kept
         /// here, not in the hole snapshot, so recording a Watch shot never drops it.
         public var phoneShots: [WatchPhoneShotSet]?
+        /// Holes 10–18 were added on this Watch at the turn (not seeded as an 18-hole round): only
+        /// such a second nine can still be changed or dropped. Optional for older rounds.
+        public var secondNineAddedAtTurn: Bool?
 
         public init(
             roundId: String,

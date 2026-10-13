@@ -8,6 +8,8 @@ public struct WatchTurnView: View {
     public let plan: NineLoopPlan
     public let isLoading: Bool
     public let message: String?
+    /// Changing an unplayed second nine from the menu rather than at the turn.
+    public let isChange: Bool
     public let onChoose: (NineLoopPlan.Second) -> Void
     public let onConfirm: () -> Void
     public let onBack: () -> Void
@@ -16,6 +18,7 @@ public struct WatchTurnView: View {
         plan: NineLoopPlan,
         isLoading: Bool = false,
         message: String? = nil,
+        isChange: Bool = false,
         onChoose: @escaping (NineLoopPlan.Second) -> Void = { _ in },
         onConfirm: @escaping () -> Void = {},
         onBack: @escaping () -> Void = {}
@@ -23,6 +26,7 @@ public struct WatchTurnView: View {
         self.plan = plan
         self.isLoading = isLoading
         self.message = message
+        self.isChange = isChange
         self.onChoose = onChoose
         self.onConfirm = onConfirm
         self.onBack = onBack
@@ -50,6 +54,11 @@ public struct WatchTurnView: View {
         return halves + [stop]
     }
 
+    private var actionTitle: String {
+        guard isChange, let loop = plan.secondLoop else { return plan.turnActionTitle }
+        return "改打 \(loop.displayName)"
+    }
+
     public var body: some View {
         ScrollView {
             content
@@ -63,7 +72,11 @@ public struct WatchTurnView: View {
     /// ImageRenderer does not materialize ScrollView contents).
     var content: some View {
             VStack(alignment: .leading, spacing: 6) {
-                WatchInstrumentHeader(plan.turnTitle, backLabel: "返回第 9 洞", onBack: onBack)
+                WatchInstrumentHeader(
+                    isChange ? "换第二个 9 洞" : plan.turnTitle,
+                    backLabel: isChange ? "不换" : "返回第 9 洞",
+                    onBack: onBack
+                )
 
                 ForEach(Self.choices(for: plan)) { choice in
                     Button {
@@ -116,7 +129,7 @@ public struct WatchTurnView: View {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        Text(isLoading ? "正在准备" : (message == nil ? plan.turnActionTitle : "重试 · \(plan.turnActionTitle)"))
+                        Text(isLoading ? "正在准备" : (message == nil ? actionTitle : "重试 · \(actionTitle)"))
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
