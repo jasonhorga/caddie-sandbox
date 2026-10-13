@@ -4913,12 +4913,17 @@ class MobileContractTests(unittest.TestCase):
         for field in [
             "frontGreenM", "centerGreenM", "backGreenM", "playsLikeDistanceM",
             "elevationDeltaM", "lastShotDistanceM", "distanceFromLastShotM",
+            # 2026-10-10: the phone's newest shot, so the Watch measures from a phone-marked shot.
+            "lastShotLatitude", "lastShotLongitude",
             # watch P0.2: green F/M/B WGS84 coords (watch recomputes distance from its own GPS)
             "frontGreenLat", "frontGreenLon", "centerGreenLat", "centerGreenLon",
             "backGreenLat", "backGreenLon",
         ]:
             self.assertIn(f"public let {field}: Double?", bridge)
             self.assertIn(f"public let {field}: Double?", state_swift)
+        # The phone's newest shot carries its own capture time; the Watch orders shots by it.
+        self.assertIn("public let lastShotCapturedAt: String?", bridge)
+        self.assertIn("public let lastShotCapturedAt: String?", state_swift)
         # watch P0.2: the topo geo→px projection — declared IDENTICALLY on phone encoder + watch decoder.
         for src in (bridge, state_swift):
             self.assertIn("public let holeImageProjection: WatchHoleImageProjection?", src)
@@ -5940,7 +5945,7 @@ class WatchHolePagesContractTests(unittest.TestCase):
         # One shot identity on both devices: Watch shots counted by event id, never a queue length.
         self.assertIn("let shots = knownShotEventIds(for: state.hole)", model)
         # The phone's current shot set travels with every snapshot, newest wins, kept per hole.
-        self.assertIn("phoneShotEventIds: recordedShotEventIds", hole_view)
+        self.assertIn("phoneShotEventIds: markedShots.map(\\.eventId)", hole_view)
         # Snapshot order (a strict revision) is applied before the hole state is replaced.
         receive = model[model.index("public func receivePhoneState("):]
         self.assertLess(
@@ -6032,13 +6037,20 @@ class WatchHolePagesContractTests(unittest.TestCase):
         bad = dict(state, caddieOptions=[dict(state["caddieOptions"][0], routeOffsetBasis="green")])
         _assert_json_schema_rejects(self, schema, bad)
 
-    def test_score_wheels_roll_inside_their_chip(self) -> None:
+    def test_score_wheels_open_a_full_screen_picker(self) -> None:
+        # Owner feedback 2026-10-11 supersedes the in-chip wheel: it opened tiny and could not be
+        # rolled on the wrist. Putts / penalties open a full-screen picker with - / + and 完成.
         score = self.read("Views/WatchScoreHoleView.swift")
+        self.assertIn("wheelPicker(openWheel, size: proxy.size)", score)
+        self.assertIn('pickerStep("minus"', score)
+        self.assertIn('pickerStep("plus"', score)
+        self.assertIn("watch-score-wheel-done", score)
+        self.assertNotIn("wheelDigits(", score)
         self.assertNotIn("m.chip * 2.24", score)
         self.assertNotIn("inlineWheel(", score)
         self.assertIn("wheelSettled = true", score)
         # Runtime evidence holds the open wheel (production still folds it back).
-        self.assertIn("guard openWheel != nil, !holdsOpenWheel else { return }", score)
+        self.assertIn("guard openWheel != nil, !holdsOpenWheel, !wheelDragging else { return }", score)
         self.assertIn("holdsOpenWheel: Bool = false", score)
         root = self.read("Views/WatchUITestRoot.swift")
         self.assertEqual(root.count("holdsOpenWheel: true"), 2)
