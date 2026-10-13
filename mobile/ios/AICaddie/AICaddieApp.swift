@@ -3244,12 +3244,29 @@ public final class LiveRoundAppModel: ObservableObject {
     /// qualified GPS fix. The Watch's compact start fact is idempotent; the phone owns the richer
     /// package and fetches it independently, falling back to a matching offline template first.
     @MainActor
+    /// The newest Watch table revision applied per round (#424).
+    private var appliedWatchTableRevisions: [String: Int] = [:]
+
     public func handleWatchRoundStart(_ start: WatchRoundStartPayload) async {
         let roundId = start.roundId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !roundId.isEmpty, !start.holes.isEmpty else { return }
 
         if package?.roundId == roundId, liveRoundState?.roundId == roundId {
             pendingWatchRoundStart = nil
+            // The Watch added, changed or dropped the second nine at its turn (#424): the same round
+            // follows its table through the phone's own second-loop path. Only a newer table
+            // revision counts (a re-sent start or older table never undoes a later choice), never
+            // once the second loop is played here, and never a different first loop.
+            if let revision = start.tableRevision {
+                guard revision > (appliedWatchTableRevisions[roundId] ?? 0) else { return }
+                appliedWatchTableRevisions[roundId] = revision
+                if let current = package, start.loopKey != current.loopKey,
+                   let loops = RoundLoopEntry.entries(loopKey: start.loopKey), (1...2).contains(loops.count),
+                   let first = current.roundLoops.first, loops[0] == first.entry,
+                   !current.isSecondLoopLocked(by: (try? offlineStore.loadEvents()) ?? []) {
+                    await setSecondLoop(loops.count == 2 ? loops[1] : nil, roundId: roundId)
+                }
+            }
             pendingLiveHole = start.activeHole
             return
         }

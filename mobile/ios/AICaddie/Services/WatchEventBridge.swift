@@ -361,6 +361,8 @@ public struct WatchRoundStartPayload: Codable, Equatable {
     public let globalId: Int?
     public let activeHole: Int
     public let holes: [WatchRoundSeedHolePayload]
+    /// Set when the Watch changed an existing round's table at its turn (#424); nil for the start.
+    public let tableRevision: Int?
 
     public init(
         schema: String = "ai-caddie-watch-round-start-v2",
@@ -370,7 +372,8 @@ public struct WatchRoundStartPayload: Codable, Equatable {
         loopKey: String,
         globalId: Int? = nil,
         activeHole: Int,
-        holes: [WatchRoundSeedHolePayload]
+        holes: [WatchRoundSeedHolePayload],
+        tableRevision: Int? = nil
     ) {
         self.schema = schema
         self.roundId = roundId
@@ -380,6 +383,7 @@ public struct WatchRoundStartPayload: Codable, Equatable {
         self.globalId = globalId
         self.activeHole = activeHole
         self.holes = holes
+        self.tableRevision = tableRevision
     }
 }
 

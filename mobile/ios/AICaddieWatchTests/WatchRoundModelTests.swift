@@ -1960,6 +1960,9 @@ final class WatchRoundModelTests: XCTestCase {
         }
         final class Requests { var keys: [String?] = [] }
         let requests = Requests()
+        final class Tables { var starts: [WatchRoundStart] = [] }
+        let tables = Tables()
+        model.onRoundTableChanged = { tables.starts.append($0) }
         model.secondLoopLoader = { request in
             requests.keys.append(request.loopKey)
             guard let key = request.loopKey, let second = request.secondNineLoopGlobalId else {
@@ -2010,6 +2013,39 @@ final class WatchRoundModelTests: XCTestCase {
         XCTAssertEqual(model.round?.loopKey, "100:all+300:all")
         XCTAssertTrue(model.canChangeSecondNine, "a same-round seed keeps the turn provenance")
         XCTAssertEqual(model.round?.secondNineAddedAtTurn, true, "persisted, so a relaunch keeps it")
+
+        // #424 review: every committed change goes to the phone, and a phone seed sent before it
+        // heard (still naming B) cannot undo the Watch's C, or bring back a dropped nine.
+        XCTAssertEqual(tables.starts.map(\.loopKey), ["100:all+200:all", "100:all+300:all", "100:all+300:all"],
+                       "add, replace, then re-sent after the one-nine seed")
+        model.applyRoundSeed(WatchRoundSeed(
+            roundId: "r1", courseName: "黑骑士 · A 场", activeHole: 10,
+            holes: courseSeedHoles("100:all+200:all", []), loopKey: "100:all+200:all"
+        ))
+        XCTAssertEqual(model.round?.loopKey, "100:all+300:all")
+        XCTAssertEqual(model.round?.holeStates.first { $0.hole == 10 }?.globalId, 300)
+        XCTAssertEqual(tables.starts.last?.loopKey, "100:all+300:all", "told again")
+        XCTAssertEqual(tables.starts.map(\.tableRevision), [1, 2, 2, 2], "one revision per committed change")
+
+        // The phone's echo of the Watch's table ends the wait and keeps 换一个 9 洞.
+        model.applyRoundSeed(WatchRoundSeed(
+            roundId: "r1", courseName: "黑骑士 · A 场", activeHole: 10,
+            holes: courseSeedHoles("100:all+300:all", []), loopKey: "100:all+300:all"
+        ))
+        XCTAssertNil(model.round?.tableAwaitingPhone)
+        XCTAssertTrue(model.canChangeSecondNine, "the echo keeps the second nine changeable")
+
+        model.openChangeSecondNine()
+        model.chooseTurnSecond(.stopAfterNine)
+        await model.confirmTurn()
+        XCTAssertEqual(tables.starts.last?.loopKey, "100:all")
+        XCTAssertEqual(tables.starts.last?.tableRevision, 3)
+        model.applyRoundSeed(WatchRoundSeed(
+            roundId: "r1", courseName: "黑骑士 · A 场", activeHole: 10,
+            holes: courseSeedHoles("100:all+300:all", []), loopKey: "100:all+300:all"
+        ))
+        XCTAssertEqual(model.round?.loopKey, "100:all", "a dropped nine stays dropped")
+        XCTAssertEqual(model.round?.holeStates.count, 9)
     }
 
     /// Owner request 2026-10-12: 开球 is preselected from where the tee shot landed (the second
