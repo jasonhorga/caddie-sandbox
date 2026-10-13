@@ -802,12 +802,11 @@ public struct WatchHoleMapView: View {
 
     /// The distance facts and the bottom control rail keep their own taps.
     private func measureTapAllowed(_ location: CGPoint, size: CGSize) -> Bool {
-        let safeRect = WatchDisplayGeometry.contentRect(in: size)
         let onFacts = !fullMap && Self.rootFactsFrame(in: size).contains(location)
         // A tap on the club tag switches plan; it never also drops a measure ring under the tag.
         let onClubTag = showTextOverlay && showCaddieRecommendation
             && Self.rootCaddieChipFrame(in: size).insetBy(dx: -4, dy: -4).contains(location)
-        return !onFacts && location.y < safeRect.maxY - 48 && !onClubTag
+        return !onFacts && location.y < Self.rootRailBottom(in: size) - 48 && !onClubTag
     }
 
     static func hitsMeasureRing(_ location: CGPoint, ring: CGPoint) -> Bool {
@@ -843,6 +842,12 @@ public struct WatchHoleMapView: View {
     /// The root recommendation is a compact instrument chip, not a second action button. Keep its
     /// frame entirely inside the rounded-display guide on 41/45/49 mm faces so it cannot collide with
     /// the bottom menu/shot controls or the hardware mask.
+    /// The bottom of the root's control rail: above the face's bottom inset, where taps were lost on
+    /// 49 mm in this paged hierarchy (#417 W01/W02).
+    static func rootRailBottom(in size: CGSize) -> CGFloat {
+        min(WatchDisplayGeometry.contentRect(in: size).maxY, size.height - WatchFaceInsets.bottom(forHeight: size.height))
+    }
+
     static func rootCaddieChipFrame(in size: CGSize) -> CGRect {
         let safeRect = WatchDisplayGeometry.contentRect(in: size)
         let width: CGFloat = min(56, max(50, safeRect.width * 0.30))
@@ -855,7 +860,7 @@ public struct WatchHoleMapView: View {
         // chip's row; the chip starts just right of it instead of covering it.
         return CGRect(
             x: min(size.width * 0.5 + 14, safeRect.maxX - width),
-            y: safeRect.maxY - height - railClearance,
+            y: rootRailBottom(in: size) - height - railClearance,
             width: width,
             height: height
         )

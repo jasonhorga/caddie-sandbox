@@ -1193,7 +1193,9 @@ public struct WatchRoundContainerView: View {
                 }
             }
             .frame(width: safeRect.width)
-            .position(x: safeRect.midX, y: safeRect.maxY - controlHalf)
+            // Above the face's bottom inset: in this paged hierarchy taps there were lost on 49 mm
+            // (#417 W01 记一杆 / W02 菜单, 0/5); the measured 41 mm cut-off is exactly that inset.
+            .position(x: safeRect.midX, y: WatchHoleMapView.rootRailBottom(in: proxy.size) - controlHalf)
         }
     }
 
