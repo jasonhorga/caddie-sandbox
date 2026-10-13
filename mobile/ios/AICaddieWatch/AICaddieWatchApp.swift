@@ -536,8 +536,7 @@ public struct AICaddieWatchApp: App {
             // A nine can go on to the next nine (the turn, often over lunch); only a full round
             // is finished. A nine left open is still set aside by the other two rules.
             allHolesScored: roundModel.allPlannedHolesScored && roundModel.holeCount > 9
-        ) != nil {
-            roundModel.pauseForIdle()
+        ) != nil, roundModel.pauseForIdle() {
             roundIdleTracker.reset()
             // Directly, not via onChange: this can run while the app is in the background.
             reconcileAutoShot()

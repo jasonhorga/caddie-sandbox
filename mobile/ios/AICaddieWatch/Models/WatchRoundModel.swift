@@ -1066,11 +1066,15 @@ public final class WatchRoundModel: ObservableObject {
     /// Sets a round left open aside (owner battery report 2026-10-12): everything is kept, including
     /// a score draft or an undoable shot, and the resume screen stops the workout session and GPS
     /// until the player chooses to continue, save or abandon.
-    public func pauseForIdle() {
-        guard round != nil, screen != .resume else { return }
-        persistInteractionState()
+    /// Returns false (and the round stays in play, with workout and GPS) when the draft could not be
+    /// written durably; the caller tries again on its next check.
+    @discardableResult
+    public func pauseForIdle() -> Bool {
+        guard round != nil, screen != .resume else { return false }
+        guard persistInteractionState() else { return false }
         inPlayMarker.clear()
         screen = .resume
+        return true
     }
 
     /// Called about once a minute and on every screen change (see `WatchRoundInPlayMarker`).
@@ -1144,8 +1148,10 @@ public final class WatchRoundModel: ObservableObject {
         screen = .scoring
     }
 
-    private func persistInteractionState() {
-        guard var current = round else { return }
+    /// Writes the draft and staged shot into the round file; false when the durable write failed.
+    @discardableResult
+    private func persistInteractionState() -> Bool {
+        guard var current = round else { return false }
         current.pendingManualShot = pendingManualShot
         current.pendingAutoShotCandidate = pendingAutoShotCandidate
         if let scoringHole {
@@ -1161,8 +1167,9 @@ public final class WatchRoundModel: ObservableObject {
         } else {
             current.scoreDraft = nil
         }
-        try? store.save(current)
+        let saved = (try? store.save(current)) != nil
         round = current
+        return saved
     }
 
     /// Start a self-contained practice round on the watch (no phone needed) — `holeCount` blank holes at

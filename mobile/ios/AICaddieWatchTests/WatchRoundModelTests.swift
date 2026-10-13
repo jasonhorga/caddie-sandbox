@@ -940,6 +940,38 @@ final class WatchRoundModelTests: XCTestCase {
         XCTAssertFalse(marker.wasInPlay(roundId: "other"))
     }
 
+    /// #423 review: a pause whose durable write fails keeps the round in play (workout and GPS on).
+    func testAnIdlePauseThatCannotSaveKeepsTheRoundInPlay() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wmodel-\(UUID().uuidString)", isDirectory: true)
+        let suite = "inplay-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let marker = WatchRoundInPlayMarker(defaults: defaults)
+        let model = WatchRoundModel(
+            store: WatchRoundStore(directoryURL: directory),
+            persistAutoShotEnabled: { _ in },
+            inPlayMarker: marker
+        )
+        model.seedRound([hole(1, par: 4), hole(2)], activeHole: 1)
+        model.startScoringActiveHole()
+        model.noteInPlay()
+
+        // The round file's path becomes a non-empty directory: every write fails.
+        let file = directory.appendingPathComponent("round.json")
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: file.appendingPathComponent("block"))
+
+        XCTAssertFalse(model.pauseForIdle())
+        XCTAssertEqual(model.screen, .scoring, "still in play: the caller does not stop workout or GPS")
+        XCTAssertTrue(marker.wasInPlay(roundId: "r1"), "the marker is kept for an accidental quit")
+
+        try FileManager.default.removeItem(at: file)
+        XCTAssertTrue(model.pauseForIdle(), "the next check succeeds once the file can be written")
+        XCTAssertEqual(model.screen, .resume)
+    }
+
     func testLastActivityIsTheNewestRecordedInput() {
         let model = seededModel(holes: [hole(1, par: 4), hole(2)])
         XCTAssertNil(model.lastActivityAt)
