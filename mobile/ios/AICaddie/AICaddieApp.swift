@@ -3259,12 +3259,19 @@ public final class LiveRoundAppModel: ObservableObject {
             // once the second loop is played here, and never a different first loop.
             if let revision = start.tableRevision {
                 guard revision > (appliedWatchTableRevisions[roundId] ?? 0) else { return }
-                appliedWatchTableRevisions[roundId] = revision
+                // A revision counts as applied once the package shows it, or once it can never apply
+                // (played second loop, different first loop). A failed fetch leaves it open, so the
+                // Watch's re-delivery of the same revision retries.
+                var settled = true
                 if let current = package, start.loopKey != current.loopKey,
                    let loops = RoundLoopEntry.entries(loopKey: start.loopKey), (1...2).contains(loops.count),
                    let first = current.roundLoops.first, loops[0] == first.entry,
                    !current.isSecondLoopLocked(by: (try? offlineStore.loadEvents()) ?? []) {
                     await setSecondLoop(loops.count == 2 ? loops[1] : nil, roundId: roundId)
+                    settled = package?.roundId == roundId && package?.loopKey == start.loopKey
+                }
+                if settled {
+                    appliedWatchTableRevisions[roundId] = max(revision, appliedWatchTableRevisions[roundId] ?? 0)
                 }
             }
             pendingLiveHole = start.activeHole

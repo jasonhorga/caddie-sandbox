@@ -1415,6 +1415,23 @@ final class LiveRoundAppModelTests: XCTestCase {
         XCTAssertEqual(model.package?.loopKey, "31794:all", "an older table (re-sent or delayed) never undoes a later one")
         await model.handleWatchRoundStart(watchTable("31795:all+31794:all", revision: 3))
         XCTAssertEqual(model.package?.loopKey, "31794:all", "a different first loop is never a second-nine change")
+
+        // Offline with C not installed: the first delivery cannot apply, so the same revision is
+        // retried on its re-delivery once C is available (no relaunch).
+        await model.handleWatchRoundStart(watchTable("31794:all+31796:all", revision: 4))
+        XCTAssertEqual(model.package?.loopKey, "31794:all")
+        let cTemplate = try blackKnightLoopPackage(source: source, globalId: 31796, label: "C")
+        try store.saveCourseTemplate(cTemplate)
+        for hole in cTemplate.holes {
+            _ = try store.saveCourseTopoImage(
+                minimalPNGData(),
+                globalId: hole.sourceGlobalId,
+                localHole: hole.sourceLocalHole,
+                geometryRevision: hole.geometryRevision
+            )
+        }
+        await model.handleWatchRoundStart(watchTable("31794:all+31796:all", revision: 4))
+        XCTAssertEqual(model.package?.loopKey, "31794:all+31796:all", "the same revision retried and applied")
     }
 
     /// B4 turn: choosing the second loop adds it to this round AND opens its first hole. The model
