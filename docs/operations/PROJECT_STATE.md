@@ -3,9 +3,9 @@
 > Short durable continuity ledger. Only this file is authoritative.
 > Completed/history is preserved verbatim in dated `docs/archive/` files.
 
-**Updated:** 2026-10-13, PR423 merge closeout
+**Updated:** 2026-10-13, PR424 production IA review started
 **Canonical baseline:** main `46f9c8ff`; audit #418 head `477eaab6`
-**Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress`
+**Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress` (#424 exact-head audit)
 
 ## Current state
 
@@ -34,6 +34,15 @@
   tests). Save failure keeps play/services active; automatic retry each
   minute. Report: `2026-10-13-pr423-review-45c08f1f.md`.
 - #421 `62201d90` is our feedback-delivery PR, awaiting Claude review.
+- #424 is ready on `6eef9e13`; ordinary `38382863189` and Native
+  `38382863562` are green. Review production score/root/turn across
+  41/42/45/46/49 mm, including Watch/phone second-nine replacement.
+  Harness `7ed76bfa` is pushed on `codex/pr424-production-harness-20261013`;
+  runtime `38388376104` is dispatched. 149 remote Python checks passed.
+  Acknowledgement comment `6144032817`; phone-reseed regressions await Native.
+  P2 source finding: same-round phone reseed loses `secondNineAddedAtTurn`,
+  hiding change/drop on an unplayed second nine. Report:
+  `2026-10-13-pr424-review-6eef9e13.md`. Final review/runtime still pending.
 
 ## Unfinished queue
 
@@ -89,6 +98,13 @@
 
 ## Owned resources and cleanup
 
+- #424 manifest: `.codex-pr424-6eef9e13-review-manifest.md`.
+  Temporary snapshot: `/dev/shm/garmin-ai-caddie-pr424-6eef9e13-20261013`,
+  expires 2026-10-14 10:54 UTC; persistent operations evidence:
+  `/home/jason/garmin-ai-caddie-data/operations/pr424-6eef9e13-20261013`.
+  Native artifacts are retained there; contract container is removed.
+  Local visual copy: `/tmp/codex-pr424-native-20261013.2B2y04` (same expiry).
+
 - Review worktree:
   `/home/ubuntu/claude-web-data/repo/garmin-ai-caddie-watch417-20261011`,
   Codex-owned, expires 2026-10-18 08:30 UTC.
@@ -115,17 +131,19 @@
 
 ## Next action and stop conditions
 
-1. Launch/restart one blocking `ops/wait_for_conclusion.sh --feedback` waiter
+1. Finish #424 exact-head code review and five-face runtime acceptance;
+   post P1/P2/evidence limits on #424 and #417. Merge only if unblocked.
+2. Launch/restart one blocking `ops/wait_for_conclusion.sh --feedback` waiter
    in the same control turn after each consumed event.
    Observe only with `sleep 300000` followed by one `write_stdin`; its
    one-line result is the only wake-up signal.
-2. Process each external PR event once, ignoring Codex-owned CI and feedback
+3. Process each external PR event once, ignoring Codex-owned CI and feedback
    events; Claude/unknown/unmarked events remain actionable.
 
 Stop only after 48 hours with no external PR events and no open PRs, or an
 owner stop instruction (latest continuous-goal instruction supersedes the
 earlier dated cutoff). Drafts count as open. Last handled external request:
-#423 comment `6140884809`, 2026-10-13 07:48:57 UTC; its new head/CI events
+#424 comment `6143437238`, 2026-10-13 10:22:06 UTC. #423 new head/CI events
 are reviewed receipts and must not trigger another review. Own comments/CI
 do not restart the quiet interval. Every Codex commit ends with
 `Generated-by: Codex`; every GitHub comment/review ends with
