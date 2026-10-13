@@ -3246,6 +3246,14 @@ public final class LiveRoundAppModel: ObservableObject {
     @MainActor
     /// The newest Watch table revision applied per round (#424).
     private var appliedWatchTableRevisions: [String: Int] = [:]
+    /// The newest Watch table (revision and loop key) per round this phone is applying or applied.
+    private var watchTableTargets: [String: (revision: Int, loopKey: String)] = [:]
+
+    /// The Watch revision a seed of `package` acknowledges: only when it shows that table.
+    private func watchTableAcknowledgement(for package: LiveRoundPackage) -> Int? {
+        guard let target = watchTableTargets[package.roundId], target.loopKey == package.loopKey else { return nil }
+        return target.revision
+    }
 
     public func handleWatchRoundStart(_ start: WatchRoundStartPayload) async {
         let roundId = start.roundId.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3263,6 +3271,17 @@ public final class LiveRoundAppModel: ObservableObject {
                 // (played second loop, different first loop). A failed fetch leaves it open, so the
                 // Watch's re-delivery of the same revision retries.
                 var settled = true
+                if (watchTableTargets[roundId]?.revision ?? 0) < revision {
+                    watchTableTargets[roundId] = (revision, start.loopKey)
+                }
+                if let current = package, start.loopKey == current.loopKey, let watchBridge {
+                    // Already this table: acknowledge it so the Watch stops waiting.
+                    watchBridge.sendRoundSeedToWatch(watchBridge.makeWatchRoundSeedPayload(
+                        package: current,
+                        activeHole: liveRoundState?.activeHole ?? start.activeHole,
+                        acknowledgedTableRevision: watchTableAcknowledgement(for: current)
+                    ))
+                }
                 if let current = package, start.loopKey != current.loopKey,
                    let loops = RoundLoopEntry.entries(loopKey: start.loopKey), (1...2).contains(loops.count),
                    let first = current.roundLoops.first, loops[0] == first.entry,
@@ -3321,6 +3340,11 @@ public final class LiveRoundAppModel: ObservableObject {
                 return
             }
             let persisted = try offlineStore.saveRoundPackage(nextPackage)
+            if let revision = start.tableRevision, persisted.loopKey == start.loopKey {
+                // Opened straight onto a table the Watch already changed: the first seed acknowledges it.
+                watchTableTargets[roundId] = (revision, start.loopKey)
+                appliedWatchTableRevisions[roundId] = revision
+            }
             try activatePackage(persisted, status: "手表已开始 · iPhone 已同步", rememberAsRecent: true)
             if persisted.holes.contains(where: { $0.number == start.activeHole }) {
                 try offlineStore.saveActiveHole(roundId: roundId, hole: start.activeHole)
@@ -3499,7 +3523,11 @@ public final class LiveRoundAppModel: ObservableObject {
             }
             if let watchBridge {
                 watchBridge.sendRoundSeedToWatch(
-                    watchBridge.makeWatchRoundSeedPayload(package: package, activeHole: hole)
+                    watchBridge.makeWatchRoundSeedPayload(
+                        package: package,
+                        activeHole: hole,
+                        acknowledgedTableRevision: watchTableAcknowledgement(for: package)
+                    )
                 )
             }
         } catch {
@@ -5440,7 +5468,8 @@ public final class LiveRoundAppModel: ObservableObject {
             recordUITestLatency("activate.watch-seed.begin globalId=\(nextPackage.course.globalId)")
             let seed = watchBridge.makeWatchRoundSeedPayload(
                 package: nextPackage,
-                activeHole: activeHole
+                activeHole: activeHole,
+                acknowledgedTableRevision: watchTableAcknowledgement(for: nextPackage)
             )
             watchBridge.sendRoundSeedToWatch(seed)
             recordUITestLatency("activate.watch-seed.end globalId=\(nextPackage.course.globalId)")

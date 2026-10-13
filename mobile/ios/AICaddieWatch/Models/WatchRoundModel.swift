@@ -920,12 +920,17 @@ public final class WatchRoundModel: ObservableObject {
         persisted.secondNineAddedAtTurn = keepsWatchSecondNine
             || (echoesWatchTable && existing?.secondNineAddedAtTurn == true) ? true : nil
         persisted.tableRevision = existing?.tableRevision
-        persisted.tableAwaitingPhone = overridesWatchChoice ? true : nil
+        // Only the phone's acknowledgement of the current revision ends the wait: an older echo of
+        // the same table (the player went B → C → B) must not.
+        let acknowledged = (seed.acknowledgedTableRevision ?? 0) >= (existing?.tableRevision ?? 0)
+        let unacknowledgedEcho = echoesWatchTable && existing?.tableAwaitingPhone == true && !acknowledged
+        persisted.tableAwaitingPhone = overridesWatchChoice || unacknowledgedEcho ? true : nil
         guard persisted.hasValidIdentity else { return }
         try? store.save(persisted)
         round = persisted
-        if overridesWatchChoice {
-            // Tell the phone again; its next seed then names the Watch's choice.
+        if overridesWatchChoice || unacknowledgedEcho {
+            // Tell the phone again: it answers with a seed naming (and acknowledging) the Watch's
+            // table, which ends the wait. An acknowledging seed never re-publishes, so this cannot loop.
             publishRoundTable()
         }
         let removedCurrentInteraction =

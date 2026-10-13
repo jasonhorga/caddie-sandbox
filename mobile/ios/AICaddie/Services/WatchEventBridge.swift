@@ -328,6 +328,9 @@ public struct WatchRoundSeedPayload: Codable, Equatable {
     public let globalId: Int?
     public let teeBox: String?
     public let loopKey: String
+    /// The Watch table revision this seed's table reflects (#424), so the Watch tells a current
+    /// acknowledgement from an older echo of the same table.
+    public let acknowledgedTableRevision: Int?
 
     public init(
         roundId: String,
@@ -336,7 +339,8 @@ public struct WatchRoundSeedPayload: Codable, Equatable {
         holes: [WatchRoundSeedHolePayload],
         globalId: Int? = nil,
         teeBox: String? = nil,
-        loopKey: String
+        loopKey: String,
+        acknowledgedTableRevision: Int? = nil
     ) {
         self.roundId = roundId
         self.courseName = courseName
@@ -345,6 +349,7 @@ public struct WatchRoundSeedPayload: Codable, Equatable {
         self.globalId = globalId
         self.teeBox = teeBox
         self.loopKey = loopKey
+        self.acknowledgedTableRevision = acknowledgedTableRevision
     }
 }
 
@@ -721,7 +726,8 @@ public final class WatchEventBridge: NSObject {
 
     public func makeWatchRoundSeedPayload(
         package: LiveRoundPackage,
-        activeHole: Int
+        activeHole: Int,
+        acknowledgedTableRevision: Int? = nil
     ) -> WatchRoundSeedPayload {
         WatchRoundSeedPayload(
             roundId: package.roundId,
@@ -744,7 +750,8 @@ public final class WatchEventBridge: NSObject {
                 },
             globalId: package.course.globalId,
             teeBox: package.course.teeBox,
-            loopKey: package.loopKey
+            loopKey: package.loopKey,
+            acknowledgedTableRevision: acknowledgedTableRevision
         )
     }
 

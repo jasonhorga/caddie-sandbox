@@ -398,6 +398,9 @@ public struct WatchRoundSeed: Codable, Equatable {
     public let globalId: Int?
     public let teeBox: String?
     public let loopKey: String
+    /// The newest Watch table revision (`WatchRoundStart.tableRevision`) this seed's table reflects:
+    /// only that acknowledgement ends the Watch's wait for the phone (#424). Nil from older phones.
+    public let acknowledgedTableRevision: Int?
 
     public init(
         schema: String = "ai-caddie-watch-round-seed-v2",
@@ -407,7 +410,8 @@ public struct WatchRoundSeed: Codable, Equatable {
         holes: [WatchRoundSeedHole],
         globalId: Int? = nil,
         teeBox: String? = nil,
-        loopKey: String
+        loopKey: String,
+        acknowledgedTableRevision: Int? = nil
     ) {
         self.schema = schema
         self.roundId = roundId
@@ -417,6 +421,7 @@ public struct WatchRoundSeed: Codable, Equatable {
         self.globalId = globalId
         self.teeBox = teeBox
         self.loopKey = loopKey
+        self.acknowledgedTableRevision = acknowledgedTableRevision
     }
 }
 

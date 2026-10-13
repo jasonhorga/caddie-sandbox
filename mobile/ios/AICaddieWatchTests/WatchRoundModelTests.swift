@@ -2027,23 +2027,40 @@ final class WatchRoundModelTests: XCTestCase {
         XCTAssertEqual(tables.starts.last?.loopKey, "100:all+300:all", "told again")
         XCTAssertEqual(tables.starts.map(\.tableRevision), [1, 2, 2, 2], "one revision per committed change")
 
-        // The phone's echo of the Watch's table ends the wait and keeps 换一个 9 洞.
-        model.applyRoundSeed(WatchRoundSeed(
-            roundId: "r1", courseName: "黑骑士 · A 场", activeHole: 10,
-            holes: courseSeedHoles("100:all+300:all", []), loopKey: "100:all+300:all"
-        ))
+        func phoneSeed(_ key: String, ack: Int?) -> WatchRoundSeed {
+            WatchRoundSeed(
+                roundId: "r1", courseName: "黑骑士 · A 场", activeHole: 10,
+                holes: courseSeedHoles(key, []), loopKey: key, acknowledgedTableRevision: ack
+            )
+        }
+        // An echo without the current revision does not end the wait; the acknowledgement does,
+        // and keeps 换一个 9 洞.
+        model.applyRoundSeed(phoneSeed("100:all+300:all", ack: nil))
+        XCTAssertEqual(model.round?.tableAwaitingPhone, true)
+        model.applyRoundSeed(phoneSeed("100:all+300:all", ack: 2))
         XCTAssertNil(model.round?.tableAwaitingPhone)
         XCTAssertTrue(model.canChangeSecondNine, "the echo keeps the second nine changeable")
+
+        // #424 review: C → B (r3), then the phone's delayed seeds arrive B(r1), C(r2), B(r3).
+        model.openChangeSecondNine()
+        model.chooseTurnSecond(.loop("200:all"))
+        await model.confirmTurn()
+        XCTAssertEqual(tables.starts.last?.tableRevision, 3)
+        model.applyRoundSeed(phoneSeed("100:all+200:all", ack: 1))
+        XCTAssertEqual(model.round?.tableAwaitingPhone, true, "an older echo of the same table")
+        model.applyRoundSeed(phoneSeed("100:all+300:all", ack: 2))
+        XCTAssertEqual(model.round?.loopKey, "100:all+200:all", "a delayed older choice cannot win")
+        XCTAssertTrue(model.canChangeSecondNine)
+        model.applyRoundSeed(phoneSeed("100:all+200:all", ack: 3))
+        XCTAssertNil(model.round?.tableAwaitingPhone)
+        XCTAssertEqual(model.round?.loopKey, "100:all+200:all")
 
         model.openChangeSecondNine()
         model.chooseTurnSecond(.stopAfterNine)
         await model.confirmTurn()
         XCTAssertEqual(tables.starts.last?.loopKey, "100:all")
-        XCTAssertEqual(tables.starts.last?.tableRevision, 3)
-        model.applyRoundSeed(WatchRoundSeed(
-            roundId: "r1", courseName: "黑骑士 · A 场", activeHole: 10,
-            holes: courseSeedHoles("100:all+300:all", []), loopKey: "100:all+300:all"
-        ))
+        XCTAssertEqual(tables.starts.last?.tableRevision, 4)
+        model.applyRoundSeed(phoneSeed("100:all+200:all", ack: 3))
         XCTAssertEqual(model.round?.loopKey, "100:all", "a dropped nine stays dropped")
         XCTAssertEqual(model.round?.holeStates.count, 9)
     }
