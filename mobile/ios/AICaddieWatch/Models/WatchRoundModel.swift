@@ -1190,15 +1190,22 @@ public final class WatchRoundModel: ObservableObject {
 
     /// 左 / 中 / 右 from the second shot's origin on this hole against the fairway outline (the shared
     /// `TeeResultClassifier`, as the phone does). Nil on a Par 3, without an outline or without a
-    /// second shot recorded on this Watch.
+    /// known position for the second shot (this Watch's own mark, else the phone's).
     func teeResultPreselection(for hole: WatchRoundState) -> WatchFairwayResult? {
         guard hole.par != 3, let outline = hole.fairwayOutline, let round else { return nil }
-        // The hole's second shot in the order both devices know (a phone shot counts in place); only
-        // a Watch-recorded second shot has its position here.
+        // The hole's second shot in the order both devices know (a phone shot counts in place): its
+        // position from this Watch's own mark, else the one the phone sent (owner 2026-10-13: "第二杆是
+        // 手机记得也有 gps 数据").
         let ids = knownShotEventIds(for: hole.hole)
-        guard ids.count >= 2,
-              let event = round.pendingEvents.first(where: { $0.eventId == ids[1] && $0.kind == .location }),
-              let second = WatchShotLocationValue(encodedValue: event.value) else { return nil }
+        let watchMark = ids.count >= 2
+            ? round.pendingEvents.first(where: { $0.eventId == ids[1] && $0.kind == .location })
+                .flatMap { WatchShotLocationValue(encodedValue: $0.value) }
+                .map { (latitude: $0.latitude, longitude: $0.longitude) }
+            : nil
+        let phoneMark = hole.teeShotLandingLatitude.flatMap { latitude in
+            hole.teeShotLandingLongitude.map { (latitude: latitude, longitude: $0) }
+        }
+        guard let second = watchMark ?? phoneMark else { return nil }
         let refs = (hole.holeImageProjection?.refs ?? []).map { (lat: $0.lat, lon: $0.lon, px: $0.px, py: $0.py) }
         let route: [[Double]] = (hole.holeMap?.route ?? []).compactMap { row in
             guard row.count >= 2,

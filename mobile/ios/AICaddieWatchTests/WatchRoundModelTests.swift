@@ -2104,6 +2104,21 @@ final class WatchRoundModelTests: XCTestCase {
         XCTAssertEqual(scoredFairway(secondLongitude: 116.0001, par: 4), .left, "west of a northbound hole")
         XCTAssertEqual(scoredFairway(secondLongitude: 116.0009, par: 5), .right)
         XCTAssertNil(scoredFairway(secondLongitude: 116.0005, par: 3))
+
+        // The second shot marked on the phone: its position arrives with the phone's hole snapshot.
+        let phoneMarked = WatchRoundState(
+            roundId: "r1", hole: 1, par: 4, distanceM: nil, selectedClub: nil,
+            holeImageProjection: projection, holeMap: map, fairwayOutline: fairway,
+            teeShotLandingLatitude: 40.001, teeShotLandingLongitude: 116.0009,
+            score: 0, putts: 0, penaltyCount: 0, caddieConfidence: "offline"
+        )
+        let model = seededModel(holes: [courseHole(1, par: 4), courseHole(2, par: 4)])
+        // The real path: the phone's snapshot as JSON, decoded and merged by receivePhoneState.
+        let wire = try! JSONDecoder().decode(WatchRoundState.self, from: JSONEncoder().encode(phoneMarked))
+        XCTAssertEqual(wire.teeShotLandingLongitude, 116.0009)
+        model.receivePhoneState(wire)
+        model.startScoringActiveHole()
+        XCTAssertEqual(model.draftFairway, .right)
     }
 
     func testAdjustDraftClampsAtLowerBounds() {

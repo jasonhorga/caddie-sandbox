@@ -567,6 +567,10 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
     public let lastShotLatitude: Double?
     public let lastShotLongitude: Double?
     public let lastShotCapturedAt: String?
+    /// Where the hole's second shot (in the phone's order, Watch shots included) was marked: where the
+    /// tee shot landed, for the 开球 preselection when the phone marked it (#424).
+    public let teeShotLandingLatitude: Double?
+    public let teeShotLandingLongitude: Double?
     public let greenInRegulation: Bool?
     public let fairwayResult: String?
     public let geometryCoverage: String?
@@ -657,6 +661,8 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
         case lastShotLatitude
         case lastShotLongitude
         case lastShotCapturedAt
+        case teeShotLandingLatitude
+        case teeShotLandingLongitude
         case greenInRegulation
         case fairwayResult
         case geometryCoverage
@@ -718,6 +724,8 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
         lastShotLatitude: Double? = nil,
         lastShotLongitude: Double? = nil,
         lastShotCapturedAt: String? = nil,
+        teeShotLandingLatitude: Double? = nil,
+        teeShotLandingLongitude: Double? = nil,
         greenInRegulation: Bool? = nil,
         fairwayResult: String? = nil,
         geometryCoverage: String? = nil,
@@ -777,6 +785,8 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
         self.lastShotLatitude = lastShotLatitude
         self.lastShotLongitude = lastShotLongitude
         self.lastShotCapturedAt = lastShotCapturedAt
+        self.teeShotLandingLatitude = teeShotLandingLatitude
+        self.teeShotLandingLongitude = teeShotLandingLongitude
         self.greenInRegulation = greenInRegulation
         self.fairwayResult = fairwayResult
         self.geometryCoverage = geometryCoverage
@@ -842,6 +852,8 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
         self.lastShotLatitude = try container.decodeIfPresent(Double.self, forKey: .lastShotLatitude)
         self.lastShotLongitude = try container.decodeIfPresent(Double.self, forKey: .lastShotLongitude)
         self.lastShotCapturedAt = try container.decodeIfPresent(String.self, forKey: .lastShotCapturedAt)
+        self.teeShotLandingLatitude = try container.decodeIfPresent(Double.self, forKey: .teeShotLandingLatitude)
+        self.teeShotLandingLongitude = try container.decodeIfPresent(Double.self, forKey: .teeShotLandingLongitude)
         self.greenInRegulation = try container.decodeIfPresent(Bool.self, forKey: .greenInRegulation)
         self.fairwayResult = try container.decodeIfPresent(String.self, forKey: .fairwayResult)
         self.geometryCoverage = try container.decodeIfPresent(String.self, forKey: .geometryCoverage)
@@ -933,6 +945,8 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
             lastShotLatitude: lastShotLatitude,
             lastShotLongitude: lastShotLongitude,
             lastShotCapturedAt: lastShotCapturedAt,
+            teeShotLandingLatitude: teeShotLandingLatitude,
+            teeShotLandingLongitude: teeShotLandingLongitude,
             greenInRegulation: greenInRegulation,
             fairwayResult: fairwayResult,
             geometryCoverage: geometryCoverage,
@@ -1003,6 +1017,8 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
             lastShotLatitude: lastShotLatitude,
             lastShotLongitude: lastShotLongitude,
             lastShotCapturedAt: lastShotCapturedAt,
+            teeShotLandingLatitude: teeShotLandingLatitude,
+            teeShotLandingLongitude: teeShotLandingLongitude,
             greenInRegulation: greenInRegulation,
             fairwayResult: fairwayResult,
             geometryCoverage: upgraded.geometryCoverage ?? geometryCoverage,
@@ -1094,6 +1110,8 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
             lastShotLatitude: lastShotLatitude,
             lastShotLongitude: lastShotLongitude,
             lastShotCapturedAt: lastShotCapturedAt,
+            teeShotLandingLatitude: teeShotLandingLatitude,
+            teeShotLandingLongitude: teeShotLandingLongitude,
             greenInRegulation: greenInRegulation,
             fairwayResult: nextFairwayResult,
             geometryCoverage: geometryCoverage,

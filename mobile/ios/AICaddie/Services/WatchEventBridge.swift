@@ -506,6 +506,10 @@ public struct WatchRoundStatePayload: Codable, Equatable {
     /// That shot's own capture time: the Watch orders it against its own marks by time, since a
     /// Watch mark the phone has not received yet can still be the older one.
     public let lastShotCapturedAt: String?
+    /// Where the hole's second shot was marked (where the tee shot landed): the Watch preselects 开球
+    /// from it with the shared classifier even when the phone marked that shot (#424).
+    public var teeShotLandingLatitude: Double? = nil
+    public var teeShotLandingLongitude: Double? = nil
     /// Strictly increasing per phone (`WatchEventBridge.nextSnapshotRevision`): the Watch applies a
     /// hole snapshot only if it is newer than the last one it applied, so a late (transferUserInfo)
     /// snapshot never rolls back a newer decision or shot set.
@@ -627,7 +631,8 @@ public final class WatchEventBridge: NSObject {
         phoneShotEventIds: [String]? = nil,
         lastShotLatitude: Double? = nil,
         lastShotLongitude: Double? = nil,
-        lastShotCapturedAt: String? = nil
+        lastShotCapturedAt: String? = nil,
+        teeShotLanding: (latitude: Double, longitude: Double)? = nil
     ) -> WatchRoundStatePayload {
         let selected = selectedOption(from: decision)
         let offlineSelected = selectedOfflineOption(from: offlineOption)
@@ -710,6 +715,8 @@ public final class WatchEventBridge: NSObject {
             lastShotLatitude: lastShotLatitude,
             lastShotLongitude: lastShotLongitude,
             lastShotCapturedAt: lastShotCapturedAt,
+            teeShotLandingLatitude: teeShotLanding?.latitude,
+            teeShotLandingLongitude: teeShotLanding?.longitude,
             snapshotRevision: nextSnapshotRevision()
         )
     }
