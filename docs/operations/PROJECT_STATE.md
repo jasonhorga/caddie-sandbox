@@ -3,9 +3,9 @@
 > Short durable continuity ledger. Only this file is authoritative.
 > Completed/history is preserved verbatim in dated `docs/archive/` files.
 
-**Updated:** 2026-10-13, PR424 exact-head production audit concluded with P2
-**Canonical baseline:** main `af918d60`; PR424 review head `cc84f909`
-**Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress` (#424 review)
+**Updated:** 2026-10-13, PR424 merged after exact-head P2 recheck
+**Canonical baseline:** main merge `6bb684fa`
+**Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress` (post-#424)
 
 ## Current state
 
@@ -15,23 +15,16 @@
 - #422 is draft/test-only and must not be merged. Its exact-head review is
   complete; do not treat prototype callbacks as production evidence.
 - #423 was reviewed, fixed, merged as `46f9c8ff`, and its branch was deleted.
-- #424 is open and not approved. Requested head `27c9ad36` is the first
-  parent of current head `cc84f909`; the second parent is main
-  `af918d60`. The production score/root/turn source review and five-face
-  runtime audit are complete. One P2 remains: 45 mm fresh-launch
-  `fairway-open` failed its first centre tap. Claude must fix and rerun the
-  exact-head audit before merge.
-  P2 conclusion is posted at
-  https://github.com/jasonhorga/garmin-ai-caddie/pull/424#issuecomment-6152319702.
-- The revision acknowledgement, phone tee-landing fallback, and inline
-  开球左/中/右 row are covered by source review and Native tests. No new
-  source-level blocker was found in those changes.
+- #424 passed the P2 recheck and was merged as `6bb684fa`; implementation
+  branch `claude/watch-production-ia-20261013` and the temporary audit branch
+  were deleted. Pass comment:
+  https://github.com/jasonhorga/garmin-ai-caddie/pull/424#issuecomment-6154831834.
+- The merged #424 source covers revision acknowledgement, phone tee-landing
+  fallback, inline 开球左/中/右, and the 45 mm score-row hit-target fix.
+  No unresolved P1/P2 finding remains for #424.
 
 ## Unfinished queue
 
-- `PR-424-45MM-FIRST-TAP` — `evidence-open`: fix the 45 mm
-  `watch-score-fairway` first-tap failure, then rerun the full fresh-launch
-  five-face production harness and post receipts.
 - `PR-418-AUDIT-477EAAB6` — `evidence-open`: hold the draft for the
   author's P1/P2 fixes and exact-head rerun.
 - `PR-420-W01-49MM` — `evidence-open`: 49 mm first manual-shot rail still
@@ -46,27 +39,21 @@
 
 ## Exact-head #424 evidence
 
-- Requested-head CI: ordinary `38403888026`, Native
-  `38403887972`; both passed. Current merge-head CI: ordinary
-  `38435188634`, Native `38435188599`; both passed.
-- Native artifacts were downloaded and inspected for both heads. Current head
-  artifacts are design `11832603751` and Watch `11834067000`; 47 Watch and
-  97 phone snapshots showed no layout, clock, safe-area, or crop regression.
-- Test-only harness `60cc7ebc`, runtime `38422216695`, evidence
-  `/home/jason/garmin-ai-caddie-data/operations/pr424-27c9ad36-rerun-20261013`.
-  Production taps: 41 mm 390/390, 42 mm 390/390, 45 mm 389/390,
-  46 mm 390/390, 49 mm 390/390.
-- The sole failure is
-  `watch-audit-45mm/0003-production-tap--fairway-open-x0-2.json`:
-  fresh launch, centre point `[53,196]`, AX frame `[10,177,86,38]`,
-  interactive bottom 215, no state change after 4.5 s. The same control
-  succeeds on retry. Its 38 pt exposed frame sits at the bottom hit boundary;
-  require a stable first tap and rerun fresh-launch trials.
-- Additional receipts passed: first-shot record 50/50, undo 50/50,
-  Watch→phone second-nine sync 2/2, and B→C→B revision acknowledgement in
-  Native unit coverage. Native log: 470 Watch unit tests and 2 UI tests.
-- Simulator evidence does not establish physical Crown, GPS, WCSession
-  delivery, OLED brightness, or wrist interaction.
+- Fixed head `5ac993ef8970db809390d19e7d27ba92c8d368b0`: ordinary CI
+  `38446895152` and Native CI `38446895372` passed.
+- Native artifacts `11839047414` (97 design/iPhone snapshots),
+  `11838888102` (47 Watch snapshots), and `11839187866` (build evidence)
+  were downloaded and inspected. Only the score-row pixels changed as
+  expected; no clock, safe-area, crop, or layout regression appeared.
+- Test-only harness `799762d0`, runtime `38453004091`, evidence
+  `/home/jason/garmin-ai-caddie-data/operations/pr424-5ac993ef-native-20261013`.
+  Fresh-launch production taps: 41/42/45/46/49 mm each 390/390.
+- The fixed 45 mm `fairway-open` first tap has AX frame
+  `[10,174,86,37]`, interactive bottom `211`, and succeeds on attempt 1.
+  First-try manual record and undo are 10/10 on every face; Watch→phone
+  second-nine sync is 2/2. Native logs report the complete audit green.
+- Simulator evidence still does not establish physical Crown, GPS, WCSession
+  transport, OLED brightness, or wrist-motion behavior.
 
 ## Live verification baselines
 
@@ -79,34 +66,32 @@
 
 ## Owned resources and cleanup
 
-- Review snapshot manifest `.codex-pr424-6eef9e13-review-manifest.md`;
-  persistent evidence:
-  `/home/jason/garmin-ai-caddie-data/operations/pr424-27c9ad36-rerun-20261013`
-  and `/home/jason/garmin-ai-caddie-data/operations/pr424-cc84f909-native-20261013`.
-  The contract container is removed; no new service, tunnel, port, volume, or
-  dependency environment was created.
+- Persistent #424 evidence:
+  `/home/jason/garmin-ai-caddie-data/operations/pr424-5ac993ef-native-20261013`
+  and `/home/jason/garmin-ai-caddie-data/operations/pr424-5ac993ef-native-ci-20261013`.
+  Temporary harness branch is deleted; no container, service, tunnel, port,
+  volume, or dependency environment was created by this recheck.
 - Review worktree:
   `/home/ubuntu/claude-web-data/repo/garmin-ai-caddie-watch417-20261011`,
-  Codex-owned, expires 2026-10-18 08:30 UTC.
+  Codex-owned, back on `codex/pr424-production-harness-20261013`, expires
+  2026-10-18 08:30 UTC.
 - Existing untracked `.codex-*` evidence is historical and must remain.
-  Archives created for this update:
-  `docs/archive/PROJECT_STATE-2026-10-13-pr424-before-final.md` and
-  `docs/archive/2026-10-13-pr424-review-6eef9e13-before-final.md`.
-- Feedback waiter terminal `3642` is retained only until this review is
-  posted; restart the required same-turn `ops/wait_for_conclusion.sh
-  --feedback` afterwards and observe only via five-minute sleep plus one
+  Archives for this closeout are
+  `docs/archive/PROJECT_STATE-2026-10-13-pr424-before-close.md` and
+  `docs/archive/2026-10-13-pr424-review-6eef9e13-before-close.md`.
+- The feedback drain/waiter terminal ended after processing the #424 event.
+  Start one required same-turn `ops/wait_for_conclusion.sh --feedback`
+  after this closeout; observe only by five-minute sleep plus one
   `write_stdin`.
 
 ## Next action and stop conditions
 
-1. Commit/push this state and review record with the Codex trailer; the P2
-   blocking #424 review comment is posted at issuecomment-6152319702.
+1. Commit/push this closeout ledger and review record with the Codex trailer.
 2. Start one same-turn `--feedback` waiter. Process only its one-line
-   conclusion, then restart it after each external event. Do not poll CI,
-   processes, monitor state, or logs from the main thread.
-3. Re-review #424 only after Claude supplies a fix and green exact-head
-   Native/runtime evidence. Do not merge while the P2 is open.
+   conclusion, restart it after each external event, and ignore already
+   handled heads plus Codex-owned CI/comments.
+3. Re-review future external PR events once their required CI is green.
 4. End the goal after 48 hours with no external PR events and no open PRs, or
-   earlier on an explicit owner stop instruction. Every Codex GitHub comment
-   ends `_Generated by Codex_`; every Codex commit ends
+   earlier on an explicit owner stop instruction. Every Codex GitHub
+   comment/review ends `_Generated by Codex_`; every Codex commit ends
    `Generated-by: Codex`.
