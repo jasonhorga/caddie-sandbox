@@ -198,9 +198,7 @@ public struct WatchUITestRoot: View {
         case "score-putts":
             WatchScoreHoleView(
                 hole: 7, par: 4, score: 5, putts: 2, penalty: 0,
-                openWheel: .putts,
-                // The runtime capture waits seconds; the evidence must still show the open wheel.
-                holdsOpenWheel: true
+                selected: .putts
             )
         case "score-next-tee-candidate":
             WatchScoreHoleView(
@@ -209,14 +207,13 @@ public struct WatchUITestRoot: View {
             )
         case "score-fairway":
             WatchScoreHoleView(
-                hole: 7, par: 4, score: 5, putts: 2, penalty: 0, fairway: .left
+                hole: 7, par: 4, score: 5, putts: 2, penalty: 0, fairway: .left,
+                showsFairway: true
             )
         case "score-penalty":
             WatchScoreHoleView(
                 hole: 7, par: 4, score: 5, putts: 2, penalty: 0,
-                openWheel: .penalty,
-                // The runtime capture waits seconds; the evidence must still show the open wheel.
-                holdsOpenWheel: true
+                selected: .penalty
             )
         case "shot-undo":
             WatchRoundHomeView(
