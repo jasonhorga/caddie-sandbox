@@ -7,10 +7,11 @@ final class WatchScoreHoleLayoutTests: XCTestCase {
         // 40 / 41 / 42 / 45 / 46 / 49 mm window heights.
         for height: CGFloat in [197, 215, 223, 242, 248, 251] {
             let available = height - WatchFaceInsets.top(forHeight: height) - WatchFaceInsets.bottom(forHeight: height)
+                - WatchScoreHoleLayout.bottomClearance
             let row = WatchScoreHoleLayout.rowHeight(available: available)
             XCTAssertLessThanOrEqual(row * 4 + WatchScoreHoleLayout.gap * 3, available + 0.5, "\(height)")
-            XCTAssertGreaterThanOrEqual(row, 29, "\(height)")
+            XCTAssertGreaterThanOrEqual(row, 28, "\(height)")
         }
-        XCTAssertEqual(WatchScoreHoleLayout.rowHeight(available: 143), 32.75, accuracy: 0.01, "41 mm")
+        XCTAssertEqual(WatchScoreHoleLayout.rowHeight(available: 139), 31.75, accuracy: 0.01, "41 mm")
     }
 }

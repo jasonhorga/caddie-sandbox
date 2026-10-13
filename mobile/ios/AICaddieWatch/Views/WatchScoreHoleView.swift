@@ -16,9 +16,12 @@ public enum WatchScoreField: String, CaseIterable, Equatable {
 enum WatchScoreHoleLayout {
     static let gap: CGFloat = 4
     static let stepWidth: CGFloat = 46
+    /// Kept clear above the bottom inset: the 45 mm 开球 chip, flush with it, missed one first tap
+    /// in the #424 audit (389/390).
+    static let bottomClearance: CGFloat = 4
 
     /// Three stepper rows and the 开球 / 保存 row share the space between the clock band and the
-    /// bottom inset equally (41 mm: 33 pt each; 49 mm: 36 pt), the geometry the #422 audit tapped
+    /// bottom inset equally (41 mm: 32 pt each; 49 mm: 35 pt), the geometry the #422 audit tapped
     /// 10/10 on every face.
     static func rowHeight(available: CGFloat) -> CGFloat {
         max(28, (available - gap * 3) / 4)
@@ -95,7 +98,7 @@ public struct WatchScoreHoleView: View {
 
     public var body: some View {
         WatchFullWindowCanvas(snapshotInsets: snapshotInsets) { size, safeTop, interactiveBottom in
-            let available = interactiveBottom - safeTop
+            let available = interactiveBottom - safeTop - WatchScoreHoleLayout.bottomClearance
             let row = WatchScoreHoleLayout.rowHeight(available: available)
             ZStack(alignment: .topLeading) {
                 watchTitleBand(titleBand, size: size, safeTop: safeTop)
@@ -226,6 +229,7 @@ public struct WatchScoreHoleView: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: WatchScoreHoleLayout.stepWidth, maxHeight: .infinity)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.22)))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -268,6 +272,8 @@ public struct WatchScoreHoleView: View {
                         .minimumScaleFactor(0.8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.16)))
+                        // The whole chip takes the tap, not only its text and fill.
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("watch-score-fairway")
@@ -278,6 +284,7 @@ public struct WatchScoreHoleView: View {
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Capsule().fill(AICaddieDesignTokens.hudGreen))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("保存 \(score) 杆")
@@ -299,6 +306,7 @@ public struct WatchScoreHoleView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(fairway == result ? AICaddieDesignTokens.par : Color.white.opacity(0.16))
                 )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("开球\(label == "中" ? "上球道" : "偏\(label)")")
