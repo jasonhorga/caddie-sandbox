@@ -368,6 +368,20 @@ checks_event_is_self_generated() {
   return 0
 }
 
+# Codex's own issue/review comments carry the required attribution marker. The
+# monitor deliberately keeps comments in the durable stream, so the waiter
+# must filter these receipts before treating them as external feedback. This
+# also handles older events emitted before the monitor learned the marker.
+feedback_event_is_self_generated() {
+  local event="$1"
+  jq -e --arg marker "$CODEX_COMMIT_MARKER" '
+    ((.kind // "") == "issue_comment" or
+     (.kind // "") == "review_comment" or
+     (.kind // "") == "review") and
+    ((.body // "") | test($marker; "i"))
+  ' <<<"$event" >/dev/null 2>>"$LOG_FILE"
+}
+
 wait_for_run() {
   log "waiting mode=$MODE repo=$REPO run=$RUN_ID"
   set +e
@@ -456,6 +470,11 @@ wait_for_pr_event() {
         event_kind="$(jq -r '.kind // "pr_feedback"' <<<"$event_line" 2>>"$LOG_FILE")"
         event_pr="$(jq -r 'if .pr? then (.pr|tostring) elif (.pullRequests? // []) | length > 0 then (.pullRequests[0]|tostring) else "all" end' <<<"$event_line" 2>>"$LOG_FILE")"
         log "matched PR event kind=$event_kind"
+        if feedback_event_is_self_generated "$event_line"; then
+          log "ignored self-generated feedback event kind=$event_kind pr=$event_pr"
+          advance_cursor "$line_no"
+          continue
+        fi
         event_run_id="$(jq -r '.runId // empty' <<<"$event_line" 2>>"$LOG_FILE")"
         if [[ "$event_kind" == "ci_run_added" || "$event_kind" == "ci_run_changed" ]] && [[ -n "$event_run_id" ]]; then
           event_head_branch="$(jq -r '.headBranch // empty' <<<"$event_line" 2>>"$LOG_FILE")"

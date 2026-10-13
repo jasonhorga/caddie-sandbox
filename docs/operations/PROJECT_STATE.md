@@ -100,9 +100,10 @@
   after the review comment; do not delete the remote artifact set.
 - Temporary waiter source `/home/jason/codex-runs/garmin-ai-caddie-wait-20261012`
   is Codex-owned for this same-turn blocking wait; its `ops/wait_for_conclusion.sh`
-  includes the Codex feedback-attribution filter, including `plain_issue_comment`
-  for #417. Remote targeted tests: 20/20 passed, zero skips. Temporary correction
-  body `/tmp/codex-pr418-correction-body-20261012.md` was removed after posting.
+  includes the Codex issue/review feedback-attribution filter, including
+  `plain_issue_comment` for #417. Remote targeted tests: 20/20 passed, zero skips.
+  Temporary correction body `/tmp/codex-pr418-correction-body-20261012.md` was
+  removed after posting.
   Remove the waiter source directory when waiting ends.
 - #423 artifacts and focused job log are persistent at
   `/home/jason/garmin-ai-caddie-data/operations/pr423-85ae2914-20261013`;
