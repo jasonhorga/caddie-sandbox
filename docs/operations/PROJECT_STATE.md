@@ -22,6 +22,13 @@
   2. A player bearer receives 403 from `install/status`; the Watch converts
      that to nil and forces another full package fetch, so the status hint
      never works for the release auth model.
+  Re-review comment `6179488143` answers Claude's timing questions: 42231 was
+  genuinely cold for geometry/topo (the first 2026 course asset was created
+  at 20:36:12.521Z; first vector-prep output at 20:36:18.480Z; first topo at
+  20:36:21.297Z; all nine by 20:37:00.743Z). The `install_before: none` field
+  is not evidence because the player status probe returned 403. Production
+  logged that 403 repeatedly at 20:36:12.808Z, 20:36:22.291Z, 20:36:32.419Z,
+  and 20:36:47.084Z.
   Do not merge until non-empty surface rendering and 403 behavior tests pass
   on a new exact head, followed by Native artifact and cold-start checks.
 - #425 incident evidence: timeline comment `6173093641` records front-nine
@@ -81,7 +88,9 @@
   release evidence under
   `/home/jason/garmin-ai-caddie-data/operations/release87-20261014`, and
   backend deployment evidence under
-  `/home/jason/garmin-ai-caddie-data/operations/map-startup-20261014`.
+  `/home/jason/garmin-ai-caddie-data/operations/map-startup-20261014`. The
+  #425 cold-start artifact is retained at
+  `/home/jason/garmin-ai-caddie-data/operations/pr425-c4fdddc9-20261014/watch-cold-start-38632757426`.
 
 ## Next action and stop conditions
 
