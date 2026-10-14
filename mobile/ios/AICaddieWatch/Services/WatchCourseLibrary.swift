@@ -1579,7 +1579,7 @@ public final class WatchCourseLibrary: ObservableObject {
         )
     }
 
-    private func fetchInstallStatus(
+    func fetchInstallStatus(
         selection: WatchCourseSelection,
         config: WatchRoundConfig
     ) async -> WatchCourseInstallStatus? {

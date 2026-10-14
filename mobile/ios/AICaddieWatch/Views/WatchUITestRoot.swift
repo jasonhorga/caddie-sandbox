@@ -80,6 +80,8 @@ public struct WatchUITestRoot: View {
         case "runtime-cancel-seed", "runtime-cancel-recovery",
              "runtime-abandon-seed", "runtime-abandon-confirm", "runtime-abandon-restore":
             runtimeRecoveryRound
+        case "cold-start-timing":
+            coldStartRound
         case "course-picker":
             cachedCoursePicker
         case "course-search-results":
@@ -522,6 +524,175 @@ public struct WatchUITestRoot: View {
                 }
             }
         }
+    }
+
+    // MARK: - cold start timing (owner report 2026-10-14)
+
+    /// The owner's real case, measured end to end: Watch only (no phone, nothing cached), the
+    /// production backend, a course the server has never prepared. It starts a round exactly as
+    /// `AICaddieWatchApp.onStartCourse` does and runs the same upgrade the app's
+    /// `activeCourseUpgradeKey` task runs, and records when the player first sees each thing.
+    /// The workflow takes a screenshot every few seconds and publishes the timeline.
+    private var coldStartRound: some View {
+        Group {
+            if model.round != nil {
+                WatchRoundContainerView(
+                    model: model,
+                    holeGeometry: coldStartGeometry,
+                    watchGreenYards: realCourseGreenYards,
+                    shotLocation: realCourseRuntimeFix
+                )
+            } else {
+                VStack(spacing: 8) {
+                    ProgressView()
+                    Text(realCourseStatus ?? "寻找未准备过的球场…")
+                        .font(.caption2)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(12)
+            }
+        }
+        .onAppear {
+            guard !realCourseTaskStarted else { return }
+            realCourseTaskStarted = true
+            Task { @MainActor in await runColdStartTiming() }
+        }
+    }
+
+    /// The app's own rule (`AICaddieWatchApp.activeHoleGeometry`): a vector map without a raster.
+    private var coldStartGeometry: WatchHoleMapGeometry? {
+        guard let state = model.activeHoleState, let holeMap = state.holeMap else { return nil }
+        let image = state.globalId.flatMap {
+            WatchHoleImageStore().image(globalId: $0, hole: state.hole, geometryRevision: state.geometryRevision)
+        }
+        return WatchHoleMapGeometry.from(holeMap: holeMap, image: image, hazards: state.hazards)
+    }
+
+    @MainActor
+    private func runColdStartTiming() async {
+        let started = Date()
+        var events: [[String: Any]] = []
+        func note(_ name: String, _ detail: [String: Any] = [:]) {
+            var row = detail
+            row["event"] = name
+            row["t"] = (Date().timeIntervalSince(started) * 10).rounded() / 10
+            events.append(row)
+        }
+        func finish(_ marker: String, _ summary: [String: Any]) {
+            var body = summary
+            body["events"] = events
+            let data = (try? JSONSerialization.data(withJSONObject: body, options: [.prettyPrinted, .sortedKeys])) ?? Data()
+            try? data.write(to: realCourseMarkerURL(marker), options: .atomic)
+        }
+        for name in ["cold-start-timing-ready", "cold-start-timing-failed"] {
+            try? FileManager.default.removeItem(at: realCourseMarkerURL(name))
+        }
+        guard let config = realCourseRuntimeConfig else {
+            realCourseStatus = "缺少真实 API 配置"
+            finish("cold-start-timing-failed", ["error": "missing API config"])
+            return
+        }
+        let environment = ProcessInfo.processInfo.environment
+        let latitude = Double(environment["COLD_START_LAT"] ?? "") ?? 47.71
+        let longitude = Double(environment["COLD_START_LON"] ?? "") ?? 13.53
+        let forcedId = Int(environment["COLD_START_GLOBAL_ID"] ?? "")
+
+        // 1. A course near the given point that the server has no install job for.
+        let library = WatchCourseLibrary()
+        await library.refreshNearby(latitude: latitude, longitude: longitude, radiusKm: 80, config: config)
+        note("nearby", ["count": library.nearbyCourses.count])
+        var chosen: (option: WatchCourseOption, selection: WatchCourseSelection, status: String)?
+        let candidates = forcedId.map { id in library.nearbyCourses.filter { $0.globalId == id } } ?? library.nearbyCourses
+        for option in candidates.prefix(25) {
+            let tees = await library.loadCourseTees(globalId: option.globalId, config: config)
+            guard let tee = tees.first else { continue }
+            let selected = option.withTees(tees, selectedTee: tee.teeBox)
+            let selection = WatchCourseSelection(front: selected, teeBox: tee.teeBox)
+            let status = await library.fetchInstallStatus(selection: selection, config: config)
+            let phase = status?.phase ?? "none"
+            if forcedId != nil || status == nil || (status?.topoReady ?? 0) == 0 {
+                chosen = (selected, selection, phase)
+                break
+            }
+        }
+        guard let chosen else {
+            realCourseStatus = "附近没有找到未准备过的球场"
+            finish("cold-start-timing-failed", ["error": "no cold course near \(latitude),\(longitude)"])
+            return
+        }
+        realCourseStatus = "开局：\(chosen.option.name)"
+
+        // 2. Start exactly as the app's onStartCourse does; the clock for the player starts here.
+        let tap = Date()
+        func since(_ date: Date) -> Double { (Date().timeIntervalSince(date) * 10).rounded() / 10 }
+        guard let prepared = library.startCourseImmediately(chosen.selection) else {
+            finish("cold-start-timing-failed", ["error": library.errorMessage ?? "startCourseImmediately failed"])
+            return
+        }
+        model.seedRound(
+            prepared.holeStates,
+            activeHole: prepared.holeStates.first?.hole,
+            courseName: prepared.courseName,
+            courseGlobalId: chosen.selection.front.globalId,
+            teeBox: chosen.selection.teeBox,
+            loopKey: chosen.selection.loopKey
+        )
+        var firstVector: Double?
+        var firstRaster: Double?
+        var allVector: Double?
+        func observe() {
+            guard let round = model.round else { return }
+            let first = round.holeStates.first { $0.hole == round.activeHole }
+            if firstVector == nil, first?.holeMap != nil {
+                firstVector = since(tap)
+                note("hole1_map_vector", ["since_tap": firstVector!])
+            }
+            if firstRaster == nil, let first, let gid = first.globalId,
+               WatchHoleImageStore().image(globalId: gid, hole: first.hole, geometryRevision: first.geometryRevision) != nil {
+                firstRaster = since(tap)
+                note("hole1_map_raster", ["since_tap": firstRaster!])
+            }
+            if allVector == nil, !round.holeStates.isEmpty, round.holeStates.allSatisfy({ $0.holeMap != nil }) {
+                allVector = since(tap)
+                note("all_holes_vector", ["since_tap": allVector!])
+            }
+        }
+        note("round_started", ["global_id": chosen.option.globalId, "install_before": chosen.status])
+        observe()
+
+        // 3. The app's active upgrade, repeated (as the app's foreground restart does) up to 15 min.
+        let deadline = tap.addingTimeInterval(15 * 60)
+        var upgraded = false
+        while Date() < deadline, !upgraded {
+            let result = await library.upgradeCachedCourseWhenReady(
+                globalId: chosen.selection.front.globalId,
+                roundId: prepared.roundId,
+                config: config,
+                loopKey: chosen.selection.loopKey,
+                teeBox: chosen.selection.teeBox,
+                priorityHole: 1,
+                onProgress: { states in
+                    model.applyCourseMapUpgrade(states)
+                    observe()
+                }
+            )
+            if let result {
+                model.applyCourseMapUpgrade(result.holeStates)
+                upgraded = true
+            }
+            observe()
+            note(upgraded ? "upgrade_complete" : "upgrade_paused", ["message": library.diagnosticErrorMessage ?? ""])
+        }
+        realCourseStatus = nil
+        finish("cold-start-timing-ready", [
+            "global_id": chosen.option.globalId,
+            "course": chosen.option.name,
+            "install_before": chosen.status,
+            "hole1_map_vector_s": firstVector ?? -1,
+            "hole1_map_raster_s": firstRaster ?? -1,
+            "all_holes_vector_s": allVector ?? -1,
+            "complete": upgraded,
+        ])
     }
 
     /// DEBUG-only lifecycle evidence for the stateful recovery paths that are difficult to prove
