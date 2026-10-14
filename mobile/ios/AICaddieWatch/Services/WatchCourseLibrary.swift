@@ -16,7 +16,14 @@ public enum WatchCourseDiscoveryState: Equatable {
 /// that has completed package + prep download is advertised as cached and can start with no config.
 @MainActor
 public final class WatchCourseLibrary: ObservableObject {
-    static let preciseUpgradeMaximumAttempts = 6
+    /// A course never prepared before is drawn by the server in the background, which can take far
+    /// longer than a minute or two (owner report 2026-10-14: a Watch-only start waited and the map
+    /// never came; the Watch had stopped asking after ~3 minutes). The active round keeps asking
+    /// once a minute for about half an hour, and again when the app comes back to the front. After
+    /// the first `preciseUpgradeFullFetchAttempts` it only reads the cheap install status each
+    /// minute and fetches the package again when the server has drawn more holes (or is ready).
+    static let preciseUpgradeMaximumAttempts = 30
+    static let preciseUpgradeFullFetchAttempts = 6
     static let preciseUpgradeRetryDelaysSeconds: [UInt64] = [5, 10, 20, 40, 60]
     /// Keep the Watch responsive on cellular/Bluetooth while still overlapping the independent
     /// course requests. The active-hole batch is run alone first; the remaining batches use this
@@ -39,6 +46,9 @@ public final class WatchCourseLibrary: ObservableObject {
     /// geometry without making green.png part of the all-hole startup critical path.
     @Published public private(set) var lastGreenDetailKey: String?
     public private(set) var diagnosticErrorMessage: String?
+    /// The active round's precise-map upgrade gave up its retries; the app restarts it when it comes
+    /// back to the front.
+    public private(set) var preciseUpgradePaused = false
 
     private let store: WatchCourseStore
     private let imageStore: WatchHoleImageStore
@@ -472,9 +482,10 @@ public final class WatchCourseLibrary: ObservableObject {
     }
 
     /// Continue the already-queued precise download without holding up play. The caller applies the
-    /// returned map facts to the same round id. Failures and service cooldowns retry six times with
-    /// bounded backoff; exhaustion stops the task so it cannot drain the Watch indefinitely. A later
-    /// app entry starts a fresh bounded attempt from the persisted partial cache.
+    /// returned map facts to the same round id. Failures and service cooldowns retry with bounded
+    /// backoff (six full attempts, then a status poll each minute up to `preciseUpgradeMaximumAttempts`);
+    /// a failed server job or exhaustion stops the task so it cannot drain the Watch indefinitely. A
+    /// later app entry starts a fresh bounded attempt from the persisted partial cache.
     public func upgradeCourseWhenReady(
         _ selection: WatchCourseSelection,
         roundId: String,
@@ -484,6 +495,7 @@ public final class WatchCourseLibrary: ObservableObject {
         onFirstAttemptFinished: (() -> Void)? = nil
     ) async -> WatchPreparedCourse? {
         guard let config else { return nil }
+        preciseUpgradePaused = false
         var shouldQueueGeometry = true
         // Lower-priority follow-up work (the whole-course template) is released once this round's
         // own first pass — priority hole first — has genuinely finished, successfully or not, and
@@ -505,9 +517,11 @@ public final class WatchCourseLibrary: ObservableObject {
         }
         defer { finishFirstPass(releasingFollowUp: true) }
 
+        var fetchPackage = true
+        var lastTopoReady = -1
         for attempt in 0..<Self.preciseUpgradeMaximumAttempts {
             guard !Task.isCancelled else { return nil }
-            do {
+            if fetchPackage { do {
                 let download = try await fetchCourseDownload(
                     selection,
                     roundId: roundId,
@@ -551,33 +565,49 @@ public final class WatchCourseLibrary: ObservableObject {
                 // The lightweight template remains playable. Retry below without replacing the
                 // active-round screen with a transient network error. The status probe below is
                 // read-only, so a failed attempt never clears a partial Watch cache.
-            }
+            } }
             finishFirstPass(releasingFollowUp: true)
+            // Unless the status below says the server drew more, later attempts only poll it.
+            fetchPackage = attempt + 1 < Self.preciseUpgradeFullFetchAttempts
 
             // The server journal is a scheduler hint, not a second local package store. When the
             // precise upgrade has to retry, consult it best-effort so a durable queued/running job
             // does not get re-enqueued on every Watch attempt. A missing route/404 or any transport
             // error leaves the existing retry and partial-cache behavior unchanged.
-            if attempt < Self.preciseUpgradeMaximumAttempts - 1,
-               let status = await fetchInstallStatus(selection: selection, config: config) {
+            let status = attempt < Self.preciseUpgradeMaximumAttempts - 1
+                ? await fetchInstallStatus(selection: selection, config: config)
+                : nil
+            if status == nil { fetchPackage = true }
+            if let status {
                 let phase = status.phase.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 if ["queued", "running", "ready"].contains(phase) {
                     shouldQueueGeometry = false
                 }
+                if phase == "failed" {
+                    diagnosticErrorMessage = "服务器暂时无法绘制这座球场的地图"
+                    preciseUpgradePaused = true
+                    return nil
+                }
+                if status.topoReady > lastTopoReady || phase == "ready" {
+                    fetchPackage = true
+                }
+                lastTopoReady = max(lastTopoReady, status.topoReady)
                 let total = max(status.totalHoles, status.holes.count)
                 diagnosticErrorMessage = total > 0
                     ? "地图后台补齐中：服务器 \(status.topoReady)/\(total) 洞"
                     : "地图后台补齐中"
             }
 
-            guard attempt < Self.preciseUpgradeRetryDelaysSeconds.count else { break }
+            guard attempt < Self.preciseUpgradeMaximumAttempts - 1 else { break }
+            let delays = Self.preciseUpgradeRetryDelaysSeconds
             do {
-                try await retrySleep(Self.preciseUpgradeRetryDelaysSeconds[attempt] * 1_000_000_000)
+                try await retrySleep(delays[min(attempt, delays.count - 1)] * 1_000_000_000)
             } catch {
                 return nil
             }
         }
-        diagnosticErrorMessage = "地图后台补齐已暂停；下次进入本局时自动重试"
+        diagnosticErrorMessage = "地图后台补齐已暂停；回到 App 时自动重试"
+        preciseUpgradePaused = true
         return nil
     }
 

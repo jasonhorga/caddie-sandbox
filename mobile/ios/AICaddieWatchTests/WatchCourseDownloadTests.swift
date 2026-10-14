@@ -92,12 +92,11 @@ final class WatchCourseDownloadTests: XCTestCase {
     }
 
     func testPreciseMapUpgradeUsesBoundedRetrySchedule() {
-        XCTAssertEqual(WatchCourseLibrary.preciseUpgradeMaximumAttempts, 6)
+        // Owner report 2026-10-14: a never-prepared course needs longer than ~3 minutes. Six full
+        // attempts with backoff, then a cheap status poll each minute (the last delay) to ~27 min.
+        XCTAssertEqual(WatchCourseLibrary.preciseUpgradeMaximumAttempts, 30)
+        XCTAssertEqual(WatchCourseLibrary.preciseUpgradeFullFetchAttempts, 6)
         XCTAssertEqual(WatchCourseLibrary.preciseUpgradeRetryDelaysSeconds, [5, 10, 20, 40, 60])
-        XCTAssertEqual(
-            WatchCourseLibrary.preciseUpgradeRetryDelaysSeconds.count,
-            WatchCourseLibrary.preciseUpgradeMaximumAttempts - 1
-        )
     }
 
     func testProgressSnapshotsDoNotPublishPlaceholderOverAnEarlierDrawableMap() {
