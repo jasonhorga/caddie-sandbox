@@ -76,8 +76,10 @@ jobs:
         env:
           API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.AI_CADDIE_API_BASE_URL || 'https://caddie.taile36706.ts.net' }}
           PLAYER_TOKEN: ${{ secrets.AI_CADDIE_CI_PLAYER_TOKEN }}
-          COLD_LAT: ${{ github.event.inputs.latitude }}
-          COLD_LON: ${{ github.event.inputs.longitude }}
+          # Push self-tests use a region the server is unlikely to have prepared (each run warms
+          # the course it picks, so the next run must not reuse it).
+          COLD_LAT: ${{ github.event.inputs.latitude || vars.COLD_START_LAT || '43.06' }}
+          COLD_LON: ${{ github.event.inputs.longitude || vars.COLD_START_LON || '141.35' }}
           COLD_GID: ${{ github.event.inputs.global_id }}
         run: |
           set -euo pipefail
