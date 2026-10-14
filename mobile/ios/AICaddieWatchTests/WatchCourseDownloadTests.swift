@@ -462,6 +462,34 @@ final class WatchCourseDownloadTests: XCTestCase {
         XCTAssertEqual(hole.penaltyCount, 0)
     }
 
+    /// #425 P1 (Jason's 2026-10-14 cold Watch-only start): the server's route-only seed has
+    /// `"map": {"image": null, ...}` — a vector map with no raster yet. The Watch required a string,
+    /// failed to decode every ready package, retried silently and never drew a map.
+    func testRouteOnlySeedWithNullImageDecodesAndDrawsAVectorMap() throws {
+        let option = WatchCourseOption(globalId: 31669, name: "北京丽宫", holes: 18, teeBox: "Blue")
+        let seed = #"{"schema":"ai-caddie-course-prep-v1","globalId":31669,"holeCount":1,"clubs":[],"holes":[{"hole":1,"par":4,"geometryCoverage":"ready","geometryRevision":"0123456789abcdef","hazards":{},"map":{"image":null,"overlay":{"w":1000,"h":800,"route":[[100.0,700.0,0.0],[500.0,400.0,200.0],[600.0,100.0,400.0]],"surfaces":[{"kind":"green","polygons":[]}]}},"greenDistances":{"available":true,"frontM":350.0,"middleM":360.0,"backM":370.0,"frontLat":40.0035,"frontLon":116.005,"middleLat":40.0036,"middleLon":116.0051,"backLat":40.0037,"backLon":116.0052},"holeImageProjection":{"available":true,"widthPx":1000,"heightPx":800,"refs":[{"lat":40.0,"lon":116.0,"px":100.0,"py":700.0},{"lat":40.0,"lon":116.001,"px":200.0,"py":700.0},{"lat":40.001,"lon":116.0,"px":100.0,"py":600.0}]}}]}"#
+        let package = try client.decodeCoursePackage(WatchPackageFixture.packageData(
+            roundId: "watch-cold-1",
+            course: #"{"globalId":31669,"name":"北京丽宫","teeBox":"Blue"}"#,
+            loops: [.init(31669, "front")],
+            overrides: [1: #"{"number":1,"par":4,"yards":404,"geometryCoverage":"ready","geometryRevision":"0123456789abcdef","sourceGlobalId":31669,"sourceLocalHole":1,"courseHoleNumber":1}"#],
+            extra: "\"coursePrep\":" + seed
+        ))
+        XCTAssertNil(package.coursePrep?.holes.first?.map?.image)
+
+        let download = try WatchCourseTemplateBuilder.build(
+            option: option,
+            package: package,
+            prepsByGlobalId: WatchCourseTemplateBuilder.seededPreps(from: package),
+            topoImagesByGlobalId: [:],
+            cachedAt: "2026-10-14T00:00:00Z"
+        )
+        let hole = try XCTUnwrap(download.template.makeRound(roundId: "watch-cold-1").holeStates.first)
+        XCTAssertEqual(hole.holeMap?.route?.count, 3, "the vector map is there before any raster")
+        XCTAssertEqual(hole.centerGreenM, 360)
+        XCTAssertTrue(download.images.isEmpty, "no raster yet")
+    }
+
     func testBuildPrefersSharedTopoBitmapOverLegacyPrepJPEG() throws {
         let option = WatchCourseOption(
             globalId: 31669,

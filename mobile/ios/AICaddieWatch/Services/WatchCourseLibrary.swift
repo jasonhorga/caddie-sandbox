@@ -21,7 +21,8 @@ public final class WatchCourseLibrary: ObservableObject {
     /// never came; the Watch had stopped asking after ~3 minutes). The active round keeps asking
     /// once a minute for about half an hour, and again when the app comes back to the front. After
     /// the first `preciseUpgradeFullFetchAttempts` it only reads the cheap install status each
-    /// minute and fetches the package again when the server has drawn more holes (or is ready).
+    /// minute and fetches the package again when the server has more drawable holes (vector or
+    /// raster), started a new job generation, or is ready.
     static let preciseUpgradeMaximumAttempts = 30
     static let preciseUpgradeFullFetchAttempts = 6
     static let preciseUpgradeRetryDelaysSeconds: [UInt64] = [5, 10, 20, 40, 60]
@@ -496,6 +497,9 @@ public final class WatchCourseLibrary: ObservableObject {
     ) async -> WatchPreparedCourse? {
         guard let config else { return nil }
         preciseUpgradePaused = false
+        // The first map before anything else: the factual map-only package draws the playing hole's
+        // vector map in seconds on a cold course; the full package below adds the player's data.
+        await publishFactualMap(selection, roundId: roundId, config: config, priorityHole: priorityHole, onProgress: onProgress)
         var shouldQueueGeometry = true
         // Lower-priority follow-up work (the whole-course template) is released once this round's
         // own first pass — priority hole first — has genuinely finished, successfully or not, and
@@ -518,7 +522,9 @@ public final class WatchCourseLibrary: ObservableObject {
         defer { finishFirstPass(releasingFollowUp: true) }
 
         var fetchPackage = true
-        var lastTopoReady = -1
+        // Server progress last seen: any newly drawable hole (vector geometry first, raster later)
+        // or a new job generation is worth a package fetch (#425 P2).
+        var lastProgress: (generation: Int?, geometry: Int, topo: Int)?
         for attempt in 0..<Self.preciseUpgradeMaximumAttempts {
             guard !Task.isCancelled else { return nil }
             if fetchPackage { do {
@@ -588,10 +594,15 @@ public final class WatchCourseLibrary: ObservableObject {
                     preciseUpgradePaused = true
                     return nil
                 }
-                if status.topoReady > lastTopoReady || phase == "ready" {
+                let progress = (generation: status.generation, geometry: status.geometryReady, topo: status.topoReady)
+                if let last = lastProgress, last.generation == progress.generation {
+                    if progress.geometry > last.geometry || progress.topo > last.topo || phase == "ready" {
+                        fetchPackage = true
+                    }
+                } else {
                     fetchPackage = true
                 }
-                lastTopoReady = max(lastTopoReady, status.topoReady)
+                lastProgress = progress
                 let total = max(status.totalHoles, status.holes.count)
                 diagnosticErrorMessage = total > 0
                     ? "地图后台补齐中：服务器 \(status.topoReady)/\(total) 洞"
@@ -609,6 +620,51 @@ public final class WatchCourseLibrary: ObservableObject {
         diagnosticErrorMessage = "地图后台补齐已暂停；回到 App 时自动重试"
         preciseUpgradePaused = true
         return nil
+    }
+
+    /// #426 client contract: `map_only=true&background_geometry=true` returns the factual package
+    /// (route, surfaces, F/M/B, GPS projection; `map.image` may be null) without waiting for player
+    /// history. Its drawable rows are published, never persisted (the full package that follows owns
+    /// the cache), and a failure here only means the ordinary path draws the map.
+    private func publishFactualMap(
+        _ selection: WatchCourseSelection,
+        roundId: String,
+        config: WatchRoundConfig,
+        priorityHole: Int?,
+        onProgress: (([WatchRoundState]) -> Void)?
+    ) async {
+        guard let onProgress, !Task.isCancelled else { return }
+        // Only a course without a drawable playing hole needs it; an installed course already has
+        // its map and its player data, which a factual row must not stand in for.
+        let hole = priorityHole ?? 1
+        if store.course(selection: selection)?.holeStates.first(where: { $0.hole == hole })?.holeMap != nil {
+            return
+        }
+        guard let package = try? await makeClient(config).fetchCoursePackage(
+            globalId: selection.front.globalId,
+            roundId: roundId,
+            teeBox: selection.teeBox,
+            loops: selection.loopsQuery,
+            backgroundGeometry: true,
+            mapOnly: true,
+            priorityHole: priorityHole
+        ), package.loopKey == selection.loopKey else { return }
+        let preps = WatchCourseTemplateBuilder.seededPreps(from: package)
+        guard !preps.isEmpty, let built = try? WatchCourseTemplateBuilder.build(
+            option: selection.front,
+            backOption: selection.back,
+            loopKey: selection.loopKey,
+            package: package,
+            prepsByGlobalId: preps,
+            topoImagesByGlobalId: [:],
+            selectedTee: selection.teeBox,
+            cachedAt: now()
+        ) else { return }
+        // Only the playing hole: a factual row stands in for nothing the round already has elsewhere
+        // (its partial coverage would reset another hole's precise geometry and caddie data).
+        let drawable = Self.drawableHoleStates(from: built.template.makeRound(roundId: roundId).holeStates)
+            .filter { $0.hole == hole }
+        if !drawable.isEmpty { onProgress(drawable) }
     }
 
     /// Resume a precise-map download for an already-started/restored round. The immutable cached
