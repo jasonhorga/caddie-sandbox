@@ -1932,7 +1932,7 @@ def run_course_install_job(identifier: str) -> None:
         return
     if str(state.get("loopKey") or "").endswith(":nearby-assets"):
         from ai_caddie.courses.course_reference import courseview_release_info
-        from ai_caddie.courses import courseview_core
+        from server_v2.map_startup import ensure_startup_course_data
 
         gid = int(state["globalId"])
         try:
@@ -1945,10 +1945,7 @@ def run_course_install_job(identifier: str) -> None:
         course_install.bind_nearby_holes(identifier, [int(h["hole"]) for h in release.get("holes") or []])
         # Optional CourseView route authority selects the correct layout on shared A/B greens.
         # Missing courseData is a normal Garmin shape; precise vectors remain the fallback.
-        try:
-            courseview_core.ensure_course_data(gid, allow_fetch=True)
-        except Exception:
-            pass
+        ensure_startup_course_data(gid)
         state = course_install.state_for_worker(identifier) or state
     rows = [row for row in (state.get("holes") or {}).values() if isinstance(row, dict)]
     if not rows:
@@ -2226,10 +2223,13 @@ def mobile_course_package(
     background_geometry: bool = False,
     include_event_cursor: bool = True,
     priority_hole: int = 1,
+    map_only: bool = False,
     loops: str = Query(..., description="Ordered round loops, G:H[,G2:H2] with H = all|front|back"),
     player_id: str = Depends(current_player_id),
 ) -> LiveRoundPackageResponse:
     round_loops = _parse_round_loops_or_422(loops, global_id)
+    if map_only and ensure_geometry:
+        raise HTTPException(status_code=422, detail="map_only uses background geometry, not a whole-course foreground install")
     if not 1 <= priority_hole <= len(round_loops) * 9:
         raise HTTPException(status_code=422, detail="priority_hole is outside the selected round")
     try:
@@ -2241,8 +2241,9 @@ def mobile_course_package(
             client_id=client_id,
             ensure_geometry=ensure_geometry,
             include_event_cursor=include_event_cursor,
-            prepare_map=background_geometry and not ensure_geometry,
+            prepare_map=(background_geometry or map_only) and not ensure_geometry,
             priority_hole=priority_hole,
+            map_only=map_only,
             loops=round_loops,
             player_id=player_id,
         )

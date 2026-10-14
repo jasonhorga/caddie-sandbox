@@ -34,6 +34,24 @@ class PriorityLaneTests(unittest.TestCase):
 
 
 class NearbyWarmTests(unittest.TestCase):
+    def test_optional_catalogue_failure_is_shared_but_new_release_retries(self):
+        from server_v2 import map_startup as ms
+        from ai_caddie.courses import courseview_core as cv
+
+        with (patch.dict(ms._COURSE_DATA_LOOKUPS, {}, clear=True),
+              patch.object(ms, "courseview_release_info", return_value={"release_version": 1}) as release,
+              patch.object(cv, "load_cached_course_data", return_value=None) as cached,
+              patch.object(cv, "ensure_course_data", side_effect=OSError("optional catalogue absent")) as fetch):
+            self.assertIsNone(ms.ensure_startup_course_data(123))
+            self.assertIsNone(ms.ensure_startup_course_data(123))
+            self.assertEqual(fetch.call_count, 1)
+            release.return_value = {"release_version": 2}
+            self.assertIsNone(ms.ensure_startup_course_data(123))
+            self.assertEqual(fetch.call_count, 2)
+            cached.return_value = {"route": "now installed"}
+            self.assertEqual(ms.ensure_startup_course_data(123), cached.return_value)
+            self.assertEqual(fetch.call_count, 2)
+
     def test_all_nearby_provider_courses_are_queued_once_without_player_facts(self):
         from server_v2 import map_startup as ms
         matches = [CourseMatch(i, f"Golf {i}", 18, None, None, 1, distance_km=i) for i in range(1, 33)]
@@ -113,6 +131,50 @@ class FactualVectorTests(unittest.TestCase):
 
 
 class ColdPriorityTests(unittest.TestCase):
+    def test_map_package_draws_without_history_stats_recommendations_or_rasters(self):
+        from ai_caddie.caddie import mobile_live as ml
+        from server_v2 import mobile
+
+        template = {
+            "id": "live-course-123", "globalId": 123, "course": "Garmin Golf", "courseKey": "gid_123",
+            "holesCompleted": 18,
+            "holes": [{"number": n, "par": 4} for n in range(1, 19)],
+        }
+        vector = {"hole": 1, "globalId": 123, "route": [[0, 0, 0], [0, 300, 300]],
+                  "steps": [], "geometryCoverage": "partial", "geometryRevision": "r1",
+                  "map": {"image": None, "overlay": {"w": 100, "h": 400,
+                          "route": [[50, 10, 0], [50, 350, 300]], "surfaces": [{"kind": "Green"}]}},
+                  "missingData": []}
+        with (patch.object(mobile, "load_history_data_for_mode", side_effect=AssertionError("history gate")),
+              patch.object(ml, "cached_build_history_stats", side_effect=AssertionError("stats gate")),
+              patch.object(ml, "_geometry_only_course_template", return_value=template),
+              patch.object(ml, "_authoritative_course_holes", return_value=18),
+              patch.object(ml, "_courseview_segment_resolver", return_value=("Garmin Golf", 18)),
+              patch.object(ml, "_geometry_evidence_for_package_hole", return_value={"coverage": "ready", "geometryRevision": "r1"}),
+              patch.object(ml, "_load_mobile_hazards", return_value={}),
+              patch.object(ml, "_geometry_seed", side_effect=AssertionError("planner geometry gate")),
+              patch.object(ml, "_route_evidence_seed", side_effect=AssertionError("planner gate")),
+              patch.object(ml.course_prep, "effective_club_ladder", side_effect=AssertionError("player ladder gate")),
+              patch.object(ml.course_prep, "lightweight_prep_hole", side_effect=AssertionError("lightweight planner gate")),
+              patch.object(ml.course_prep, "precise_route_seed_hole", return_value=vector),
+              patch.object(ml.course_prep.hole_render, "render_hole", side_effect=AssertionError("raster gate")),
+              patch("server_v2.map_startup.prepare_priority_hole", return_value={"drawable": True}) as first_map):
+            package = mobile.build_mobile_course_package_response(
+                123, loops=[(123, "back"), (123, "front")], map_only=True,
+                prepare_map=True, priority_hole=10, include_event_cursor=False,
+            )
+        first_map.assert_called_once_with([(123, "back"), (123, "front")], priority_hole=10, tee_box=None)
+        self.assertEqual(len(package.holes), 18)
+        self.assertEqual(package.holes[0]["sourceLocalHole"], 10)
+        self.assertEqual(package.holes[9]["sourceLocalHole"], 1)
+        self.assertEqual(package.clubProfiles, [])
+        self.assertEqual(package.sourceCoverage["playerEnrichment"], "deferred")
+        self.assertEqual(package.enrichmentState["pendingHoles"], list(range(1, 19)))
+        self.assertTrue(all(not row["offlineOptions"] for row in package.caddieContextSeeds))
+        self.assertIsNone(package.coursePrep["holes"][0]["map"]["image"])
+        self.assertTrue(package.coursePrep["holes"][0]["map"]["overlay"]["surfaces"])
+        self.assertEqual(package.course["name"], "Garmin Golf")
+
     def test_second_loop_priority_uses_correct_physical_hole_without_raster(self):
         from server_v2 import map_startup as ms
         from ai_caddie.caddie.round_loops import CourseShape

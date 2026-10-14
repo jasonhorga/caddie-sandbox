@@ -54,9 +54,49 @@ decryption. Its captures remain failed-verification evidence, excluded from
 successful timing claims. The corrected probe reads the existing protected
 session path; no credential is copied to evidence or logs.
 
-Targeted tests: 229 passed, two missing-data skips. Contended cold and public
-transport acceptance remain in progress; production remains cbc17f4e and
-TestFlight remains 0.1.0 (87) at this checkpoint.
+## Regional contention and first-map response
+
+All 17 provider courses around 47.8688854, 13.1455506 were enqueued, with a
+foreground cold selection. No release, ZIP or mesh existed for the named
+selection before each measurement. Direct backend results:
+
+| Selection/request | First package | Vector preparation | History | Facts/player package |
+|---|---:|---:|---:|---:|
+| 30189, ordinary cold package | 24.061 s | 8.176 s | 7.189 s | 8.661 s |
+| 30189, warm package | 4.718 s | 0.023 s | 2.559 s | 2.094 s |
+| 30189, warm after selected nine ready | 8.315 s | 0.026 s | 2.381 s | 4.362 s |
+| 28241, cold factual map package | 7.643 s | 7.445 s | 0.000 s | 0.166 s |
+| 28241, immediate warm factual map | 0.450 s | 0.186 s | 0.000 s | 0.217 s |
+| 28241, warm after selected nine ready | 0.618 s | 0.032 s | 0.000 s | 0.343 s |
+| 28245, final code cold factual map | 11.613 s | 10.676 s | 0.000 s | 0.836 s |
+| 28245, immediate warm factual map | 0.321 s | 0.053 s | 0.000 s | 0.213 s |
+
+Different courses are separate samples, not a paired latency benchmark. The
+ordinary path still waits for player projection after its map is drawable.
+The explicit `map_only=true&background_geometry=true` package request removes
+that dependency: the same v2 schema carries the complete ordered hole list,
+factual vectors and deferred player enrichment. It returns empty clubProfiles
+and no synthetic recommendations; fetch the ordinary package separately for
+personal clubs/history/caddie. Keep the first map and any existing personal
+club model while that enrichment arrives. This is the visible tradeoff: map
+first, recommendations later. Raster completion is never a drawing gate.
+
+The 28241 nine-hole install succeeded (geometry 9/9 + topo 9/9), but hole 9
+alone spent 36.266 s exporting distances and 54.052 s exporting hazards.
+This remains a full-install optimization opportunity, independent of usable
+first-map delivery. Optional CourseView route authority is now observed before
+the foreground export so A/B greens bind to the selected layout; missing
+catalogues are shared per release and retried hourly instead of per hole.
+
+Targeted final code tests: 231 passed, two missing-data skips. These include
+the map-only history/stats/planning/raster isolation and ordered back→front
+identity, plus optional catalogue release invalidation/backoff. The final
+cold 28245 sample includes optional route authority (metadata 0.765 s),
+geometry 8.609 s and factual vectors 1.286 s, with all 17 regional courses
+queued. The first response had a real map with topo still pending; its
+verification-owned remaining install was cancelled/drained after first-map
+measurements. Public transport acceptance is pending. Production remains
+cbc17f4e and TestFlight remains 0.1.0 (87) at this checkpoint.
 
 Persistent evidence, controls and resource manifest:
 `/home/jason/garmin-ai-caddie-data/operations/map-startup-20261014`.

@@ -38,9 +38,15 @@
   Implementation now queues all nearby rows, reserves a foreground geometry
   lane, yields the durable coordinator after 1 nearby/2 selected holes, and
   persists factual route/surface/FMB vectors independently of rasters. Latest
-  targeted tests: 229 pass (2 data-dependent skips). Genuine cold 28263:
+  targeted tests: 231 pass (2 data-dependent skips). Genuine cold 28263:
   vector ready 6.844 s, drawable first package 14.125 s, repeat 0.615 s;
-  nine-hole full install 63 s after enqueue. Contended 30189 run is in flight.
+  nine-hole full install 63 s after enqueue. With 17 regional jobs, cold 30189
+  vectors took 8.176 s but ordinary response 24.061 s. Added `map_only=true`:
+  cold 28241 factual package 7.643 s, warm 0.450/0.618 s; personal clubs/seeds
+  stay explicitly deferred until the separate full request. Final cold 28245
+  map 11.613 s, warm 0.321 s under 17 regional jobs; topo still pending.
+  Optional layout authority/backoff covered. Evidence/contract:
+  `2026-10-14-nearby-map-startup.md`, #426 comments 6174400830/6174687709.
 - `PR-425-COLD-WATCH-MAP` — `evidence-open`: exact head `c4fdddc9`;
   ordinary and Native `38594117897` green; 126 contracts + 12 parity passed.
   All 47 Watch + 97 iPhone/design PNGs match the reviewed #424 baseline.
@@ -110,22 +116,20 @@
   and `/home/jason/garmin-ai-caddie-data/operations/pr424-5ac993ef-native-ci-20261013`.
   Temporary harness branch is deleted; no container, service, tunnel, port,
   volume, or dependency environment was created by this recheck.
-- Review worktree:
+- Implementation worktree:
   `/home/ubuntu/claude-web-data/repo/garmin-ai-caddie-watch417-20261011`,
-  Codex-owned, back on `codex/pr424-production-harness-20261013`, expires
-  2026-10-18 08:30 UTC.
-- That clean-tracked worktree is now reused for backend implementation on
+  Codex-owned, reused for backend implementation on
   `codex/backend-nearby-map-startup-20261014`, owner Codex, created
   2026-10-14, expires 2026-10-21. Historical untracked audit controls remain.
 - Backend verification snapshot `/dev/shm/garmin-ai-caddie-map-startup-20261014`
-  is active/read-only, expires 2026-10-15. Persistent evidence and manifests:
+  is retained/read-only, expires 2026-10-15. Persistent evidence and manifests:
   `/home/jason/garmin-ai-caddie-data/operations/map-startup-20261014`.
-  Test containers are auto-removed. Probe container
-  `codex-map-startup-probe-20261014` is in-flight (terminal `27283`), reuses
+  Test/probe containers auto-removed. Completed probes reused
   the existing API image and protected private volume; no service, port, DB
   migration, dependency environment or token clone. Verification journals
   live under evidence/jobs, isolated from production jobs. Preserve new course
-  assets; drain/cancel only verification regional workers when probe ends.
+  assets. Verification workers drained/cancelled; probes 27283/50393/45713
+  and final test 87775 exited 0. No background test worker remains.
 - Existing untracked `.codex-*` evidence is historical and must remain.
   Archives for this closeout are
   `docs/archive/PROJECT_STATE-2026-10-13-pr424-before-close.md` and
@@ -143,7 +147,7 @@
 
 1. Implement and verify #426 backend cold/nearby map path, publish measured
    phase timings, and deploy the verified API plus matching sync image.
-   Collect contended probe `27283`, push implementation PR, wait exact-head
+   Push implementation PR, wait exact-head
    full CI, then complete deployment/public readiness and warm/cold probes.
 2. On #425 author fixes, recheck null-image decode plus real upgrade progress,
    geometry/generation polling, exact-head tests/Native artifacts; merge/delete
