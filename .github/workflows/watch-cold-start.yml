@@ -33,7 +33,7 @@ on:
       - claude/watch-cold-start-timing-20261014
     paths:
       - '.github/workflows/watch-cold-start.yml'
-      - 'mobile/ios/AICaddieWatch/Views/WatchUITestRoot.swift'
+      - 'mobile/ios/AICaddieWatch/**'
 
 concurrency:
   group: ai-caddie-watch-cold-start
