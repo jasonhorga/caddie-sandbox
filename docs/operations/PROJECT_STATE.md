@@ -3,156 +3,136 @@
 > Short durable continuity ledger. Only this file is authoritative.
 > Completed/history is preserved verbatim in dated `docs/archive/` files.
 
-**Updated:** 2026-10-14, nearby/cold-map backend implementation
-**Canonical baseline:** main `4e2d938a` (Build 87 source `bfe850b7`)
-**Current slice:** `BACKEND-NEARBY-MAP-STARTUP` — `in-progress`
+**Updated:** 2026-10-14 19:03 UTC, #427 deployment/public verification closed
+**Canonical baseline:** main `128798fd` (Build87 source `bfe850b7`)
+**Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress`
 
-## Current state
+## Current state and unfinished queue
 
-- #404–#416 reviewed and merged; #417 remains an evidence issue with findings
-  already posted. #418 remains draft/evidence-open. #420 remains
-  evidence-open for the 49 mm first-tap rail. #421 awaits external review.
-- #422 is draft/test-only and must not be merged. Its exact-head review is
-  complete; do not treat prototype callbacks as production evidence.
-- #423 was reviewed, fixed, merged as `46f9c8ff`, and its branch was deleted.
-- #424 passed the P2 recheck and was merged as `6bb684fa`; implementation
-  branch `claude/watch-production-ia-20261013` and the temporary audit branch
-  were deleted. Pass comment:
-  https://github.com/jasonhorga/garmin-ai-caddie/pull/424#issuecomment-6154831834.
-- The merged #424 source covers revision acknowledgement, phone tee-landing
-  fallback, inline 开球左/中/右, and the 45 mm score-row hit-target fix.
-  No unresolved P1/P2 finding remains for #424.
-- Internal iPhone + Watch Build 87 is uploaded and Apple-verified, both
-  0.1.0 (87). #424 release replies `6162864583`, `6163465026`,
-  `6164079823` are handled; do not redispatch on duplicate release requests.
-  Full diagnosis/package/device handoff: `2026-10-14-internal-testflight87.md`.
-
-## Unfinished queue
-
-- `BACKEND-NEARBY-MAP-STARTUP` — `in-progress`: issue #426 records the
-  owner target (nearby map in seconds; unseen usable map <30 s) and backend/
-  Watch ownership. Implement low-priority regional all-hole prep/topo within
-  30 km and first-package priority-hole vectors before raster work. Verify
-  cold, warm and contended timings; retain ordered loops, Tee, release binding
-  and player isolation. Claude owns Watch vector rendering/nearby downloads.
-  Implementation now queues all nearby rows, reserves a foreground geometry
-  lane, yields the durable coordinator after 1 nearby/2 selected holes, and
-  persists factual route/surface/FMB vectors independently of rasters. Latest
-  targeted tests: 231 pass (2 data-dependent skips). Genuine cold 28263:
-  vector ready 6.844 s, drawable first package 14.125 s, repeat 0.615 s;
-  nine-hole full install 63 s after enqueue. With 17 regional jobs, cold 30189
-  vectors took 8.176 s but ordinary response 24.061 s. Added `map_only=true`:
-  cold 28241 factual package 7.643 s, warm 0.450/0.618 s; personal clubs/seeds
-  stay explicitly deferred until the separate full request. Final cold 28245
-  map 11.613 s, warm 0.321 s under 17 regional jobs; topo still pending.
-  Optional layout authority/backoff covered. Evidence/contract:
-  `2026-10-14-nearby-map-startup.md`, #426 comments 6174400830/6174687709.
-- `PR-425-COLD-WATCH-MAP` — `evidence-open`: exact head `c4fdddc9`;
-  ordinary and Native `38594117897` green; 126 contracts + 12 parity passed.
-  All 47 Watch + 97 iPhone/design PNGs match the reviewed #424 baseline.
-  P1 `6172993813`: route-only map.image null rejected by required Watch String.
+- `PR-FEEDBACK-CONTINUOUS` — `in-progress`: resume retained terminal
+  `85049`; deduplicate external feedback and ignore Codex-owned bookkeeping.
+  Do not create another monitor, edit its cursor, or use ad-hoc CI/ps polling.
+- `BACKEND-NEARBY-MAP-STARTUP` — `evidence-open`: backend #427 is
+  merged/deployed and its verification/cleanup is complete. Owner's on-wrist
+  target (nearby seconds; unseen usable map <30 s) needs Claude's Watch
+  integration and real device evidence. Coordination issue #426; deployed
+  contract/timings comment `6176058201`. Detailed operations evidence:
+  `2026-10-14-nearby-map-startup.md`.
+- `PR-425-COLD-WATCH-MAP` — `evidence-open`: head remains
+  `c4fdddc9abb601aaefd599f6b31019a92a6680ec`; do not rerun the completed
+  original-head review. Ordinary and Native `38594117897` passed,
+  126 contracts + 12 parity passed; 47 Watch/97 iPhone snapshots matched #424.
+  P1 `6172993813`: required Watch String rejects vector-only map.image:null.
   P2 `6173026392`: status-only retries miss geometry/generation progress.
-  Timeline `6173093641`: front nine ready 08:15:54 (~76 s); all 18 ready
-  08:16:55 (~125 s from whole-course enqueue). Both precede final Watch retry.
-  Server prep has no raster gate; original response bodies/start times absent.
-  Present loopback first package 110.098 s; warm repeat 3.255 s.
-  Hold comment `6173187157`; Claude implements fixes. Do not merge until
-  blockers and exact-head gates clear. Detailed evidence/limitations:
-  `2026-10-14-pr425-cold-watch-map-review.md`.
-- `PR-418-AUDIT-477EAAB6` — `evidence-open`: hold the draft for the
-  author's P1/P2 fixes and exact-head rerun.
-- `PR-420-W01-49MM` — `evidence-open`: 49 mm first manual-shot rail still
-  needs five successful first-try transitions.
-- `WATCH-IDLE-PHYSICAL-ACCEPTANCE` — `evidence-open`: owner device
-  validation remains required for #423.
+  Timeline `6173093641`: 28242 front nine ready08:15:54 (~76 s), all18
+  ready08:16:55 (~125 s); both precede final Watch retry. Original request
+  bodies/start times absent. No server raster gate; previous loopback package
+  110.098 s, warm3.255 s. Hold `6173187157`; Claude implements Watch fixes.
+  Deployment reply `6176081318`; backend is now ready. Exact revised head,
+  Native and first-vector behavior
+  must pass before merge/delete. Review: `2026-10-14-pr425-cold-watch-map-review.md`.
+- `PR-418-AUDIT-477EAAB6` — `evidence-open`: draft held for P1/P2
+  author fixes and exact-head rerun.
+- `PR-420-W01-49MM` — `evidence-open`: 49 mm first manual-shot rail
+  still needs five successful first-try transitions.
 - `PR-421-FEEDBACK-DELIVERY` — `evidence-open`: awaiting external review.
-- `PR-FEEDBACK-CONTINUOUS` — `queued`: process external events once,
-  ignore Codex-owned CI/comments, and retain one same-turn feedback waiter.
-- `NATIVE-FIXTURE-LAYOUT-STABILITY` and `IOS-STATUS-CONTRAST` —
-  `queued`; `OWNER-DEVICE-BUILD87` — `evidence-open`: Crown score row,
-  45-min idle pause, <30-min relaunch, second-nine sync, tee preselection.
-
-## Exact-head #424 evidence
-
-- Fixed head `5ac993ef8970db809390d19e7d27ba92c8d368b0`: ordinary CI
-  `38446895152` and Native CI `38446895372` passed.
-- Native artifacts `11839047414` (97 design/iPhone snapshots),
-  `11838888102` (47 Watch snapshots), and `11839187866` (build evidence)
-  were downloaded and inspected. Only the score-row pixels changed as
-  expected; no clock, safe-area, crop, or layout regression appeared.
-- Test-only harness `799762d0`, runtime `38453004091`, evidence
-  `/home/jason/garmin-ai-caddie-data/operations/pr424-5ac993ef-native-20261013`.
-  Fresh-launch production taps: 41/42/45/46/49 mm each 390/390.
-- The fixed 45 mm `fairway-open` first tap has AX frame
-  `[10,174,86,37]`, interactive bottom `211`, and succeeds on attempt 1.
-  First-try manual record and undo are 10/10 on every face; Watch→phone
-  second-nine sync is 2/2. Native logs report the complete audit green.
-- Simulator evidence still does not establish physical Crown, GPS, WCSession
-  transport, OLED brightness, or wrist-motion behavior.
+- #422 remains draft/test-only; never merge. Completed prototype review
+  does not establish production callback behavior.
+- #417 remains the Watch audit evidence issue; already-posted findings stand.
+  `WATCH-IDLE-PHYSICAL-ACCEPTANCE` and `OWNER-DEVICE-BUILD87` —
+  `evidence-open`: physical Crown, 45-min idle pause, <30-min relaunch,
+  second-nine WCSession/GPS transport and Tee preselection remain owner checks.
+- `NATIVE-FIXTURE-LAYOUT-STABILITY` and `IOS-STATUS-CONTRAST` — `queued`.
 
 ## Live verification baselines
 
-- Production API/sync baseline: `cbc17f4e`; health, history, sync, precise
-  prep and topo gates passed; manual sync ended `sync ok` and `done`.
-- #404/#406 deployment evidence remains recorded: 237 related tests and
-  nine-hole workload 35.49 s → 22.93 s.
-- Internal TestFlight 0.1.0 (87): CD `38529901074`, Apple `38532148335`,
-  `VALID/IN_BETA_TESTING`, existing internal group explicitly contains 87.
-  Source `bfe850b7`, backend `cbc17f4e`, IPA provenance/upload flags match.
-- Build 87 signed IPA SHA-256:
-  `b847f3fdc2c461f176494c732f92a32322b0bdf3da3a3fc313b2bbc782596b0a`.
+- Production revision `128798fd8fd638227c8668a05de02c15eb3787a7`,
+  container `aicaddie-release-128798fd-production-20261014`,
+  loopback39055/container9000, public `https://caddie.taile36706.ts.net`.
+  Matching sync image exists. Previous cbc17f4e container is stopped/retained
+  for rollback. Existing ingress, protected private volume and cron preserved.
+- Health/history/sync/prep/topo gates passed. Manual incremental sync
+  18:36:47–18:37:27 UTC (40 s), exact revision, `sync ok`, `done`.
+- Authenticated readiness HTTP200/authenticated:true remains the existing
+  Build87 `degraded` internal baseline: absent private acceptance evidence,
+  historical weather and legacy mobile event schema. Source/18-hole geometry/
+  11 clubs/18 seeds are ready. No new runtime failure or full-ready claim.
+- #427 exact-head full CI `38612115537` passed at `b9cf540a`;
+  production image verification 258 pass, 2 data-dependent skips, plus original
+  deployment gates; 39 supplemental map/auth tests had passed.
+- Production cold28214: release/Tee0.6740 s + public drawable package5.7789 s
+  =6.4529 s, immediate public warm0.2237 s/loopback0.1149 s.
+  Before: no release, zero ZIPs/meshes. First map had true route/surface/FMB/GPS,
+  geometry1/9, topo0/9; 15,540 wire bytes; Server-Timing total5.654 s.
+  Samples originate on homeserver through Funnel, not wrist/Tokyo/Austria.
+- Regionally warmed public26557 first/repeat1.4252/0.8883 s;
+  nearby28242 public3.2413/2.6722 s. GPS options/nearby0.8146/1.1234 s
+  initially, later0.1980/0.2160 s. All17 actual nearby journals verified.
+- Original26557 probe used :front from initial catalogue18; release267 is9
+  (:all). HTTP422 excluded/preserved. Fresh nearby/Tee both now9.
+  Test stale Watch option + new Tee authority (withTees preserves old count);
+  this is a source risk, not a reproduced fresh-search Watch failure.
+- Client first-map contract: `map_only=true&background_geometry=true`,
+  nullable image + actual overlay.route/surfaces; draw before topo/installready.
+  Ordinary package separately enriches clubs/caddie; retain map/personal model.
+- Internal TestFlight iOS/watchOS0.1.0(87): CD `38529901074`,
+  Apple `38532148335`, VALID/IN_BETA_TESTING, internal group contains87.
+  Source `bfe850b7`, release backendcbc17f4e. No new backend-slice upload.
+  Full diagnosis/device handoff: `2026-10-14-internal-testflight87.md`.
+  IPA SHA256 `b847f3fdc2c461f176494c732f92a32322b0bdf3da3a3fc313b2bbc782596b0a`.
+- #424 merged `6bb684fa`; final exact head `5ac993ef`, ordinaryCI
+  `38446895152`/Native `38446895372` passed. Harness `799762d0`,
+  run `38453004091`: 41/42/45/46/49mm taps390/390 each, record/undo10/10,
+  simulated second-nine sync2/2;45mm first fairway tap succeeds. Physical
+  scale/GPS/Crown/WCSession/OLED behavior remains unproven by these simulators.
+  #423 merged `46f9c8ff`; #424 release replies6162864583/6163465026/
+  6164079823 handled. Do not redispatch on duplicate Build87 requests.
 
 ## Owned resources and cleanup
 
-- #425 read-only snapshot `/dev/shm/garmin-ai-caddie-pr425-c4fdddc9-20261014`
-  was removed after evidence was saved; test container auto-removed. Health 200.
-  No service, port, tunnel, environment or production configuration changed.
-  Persistent evidence:
-  `/home/jason/garmin-ai-caddie-data/operations/pr425-c4fdddc9-20261014`.
-  Manifest/scripts/comments retained there; cleanup receipt closes this review.
-  Prior live/in-flight ledgers preserved verbatim in dated 2026-10-14 archives.
-- Persistent #424 evidence:
-  `/home/jason/garmin-ai-caddie-data/operations/pr424-5ac993ef-native-20261013`
-  and `/home/jason/garmin-ai-caddie-data/operations/pr424-5ac993ef-native-ci-20261013`.
-  Temporary harness branch is deleted; no container, service, tunnel, port,
-  volume, or dependency environment was created by this recheck.
-- Implementation worktree:
+- One implementation worktree:
   `/home/ubuntu/claude-web-data/repo/garmin-ai-caddie-watch417-20261011`,
-  Codex-owned, reused for backend implementation on
-  `codex/backend-nearby-map-startup-20261014`, owner Codex, created
-  2026-10-14, expires 2026-10-21. Historical untracked audit controls remain.
-- Backend verification snapshot `/dev/shm/garmin-ai-caddie-map-startup-20261014`
-  is retained/read-only, expires 2026-10-15. Persistent evidence and manifests:
+  owner Codex, branch `codex/map-startup-deploy-verification-20261014`,
+  renewed 2026-10-14, expires 2026-10-21. Historical untracked audit controls
+  remain; root main's Codex-owned stale ledger is archived for reconciliation.
+- Shared remote checkout (never switch HEAD/index):
+  `/home/jason/codex-runs/garmin-ai-caddie-claude-takeover-20261005`.
+- Backend evidence:
   `/home/jason/garmin-ai-caddie-data/operations/map-startup-20261014`.
-  Test/probe containers auto-removed. Completed probes reused
-  the existing API image and protected private volume; no service, port, DB
-  migration, dependency environment or token clone. Verification journals
-  live under evidence/jobs, isolated from production jobs. Preserve new course
-  assets. Verification workers drained/cancelled; probes 27283/50393/45713
-  and final test 87775 exited 0. No background test worker remains.
-- Existing untracked `.codex-*` evidence is historical and must remain.
-  Archives for this closeout are
-  `docs/archive/PROJECT_STATE-2026-10-13-pr424-before-close.md` and
-  `docs/archive/2026-10-13-pr424-review-6eef9e13-before-close.md`.
-- Feedback `19026` returned the already-reviewed c4fdddc9 Native CI event;
-  deduplicated. Terminal `85049` continues the untouched cursor. No second
-  monitor. All Build 87 release/Apple waiters returned terminal conclusions.
-- Build 87 persistent evidence:
-  `/home/jason/garmin-ai-caddie-data/operations/release87-20261014`.
-  Release controls are backed up there and closed with checksums/allow-list.
-  Used existing API Python/token without logging credentials; no new
-  container, dependency environment, port, service, tunnel or worktree.
+  Verification source archived/removed before build. Build source
+  `/dev/shm/codex-map-startup-deploy-20261014`, candidate
+  `codex-map-startup-128798fd-candidate-20261014`(39088), disposable volume
+  `codex-map-startup-128798fd-private-20261014` all removed; source archive
+  checksum/open-file checks passed; production health confirmed. Test/probe
+  containers auto-removed. No build/sync/probe terminal remains in flight.
+  Protected maps/production volume, production images, rollback and regional
+  install jobs remain intentionally persistent. Capacity ~44GiB free.
+- Successful deployment reports under evidence/deployment:
+  `live-map-28214-20261014T185721Z.json`,
+  `live-map-26557-20261014T185658Z.json`, `catalogue-26557-identity.json`,
+  `cleanup-result.json`; failed original `live-map-timings.json` retained.
+- #425 snapshot and test container removed; evidence
+  `/home/jason/garmin-ai-caddie-data/operations/pr425-c4fdddc9-20261014`.
+  No review service/port/tunnel/environment remains.
+- #424 evidence: project operations `pr424-5ac993ef-native-20261013`
+  and `pr424-5ac993ef-native-ci-20261013`; audit branch deleted.
+  Build87 evidence: operations `release87-20261014`; controls closed.
+- Feedback85049 is retained/unobserved;19026's already-reviewed Native event
+  deduplicated. Prior waiters/release/Apple terminals returned. Do not replace
+  the pending feedback handle or edit `blocking-waits/feedback-cursor`.
+- Displaced states preserved verbatim in dated2026-10-14 map-startup
+  archives (before-public-closeout, deployed-before-close, root-before-reconcile).
 
 ## Next action and stop conditions
 
-1. Implement and verify #426 backend cold/nearby map path, publish measured
-   phase timings, and deploy the verified API plus matching sync image.
-   Push implementation PR, wait exact-head
-   full CI, then complete deployment/public readiness and warm/cold probes.
-2. On #425 author fixes, recheck null-image decode plus real upgrade progress,
-   geometry/generation polling, exact-head tests/Native artifacts; merge/delete
-   the branch only when blockers clear. Re-delivered c4fdddc9 CI is handled.
-3. End the goal after 48 hours with no external PR events and no open PRs, or
-   earlier on an explicit owner stop instruction. Every Codex GitHub
-   comment/review ends `_Generated by Codex_`; every Codex commit ends
-   `Generated-by: Codex`.
+1. Finish publishing deployment evidence/ledger with real operations work;
+   reconcile root main, then resume terminal85049 in the same turn.
+2. On a revised #425/Watch integration head, inspect first-map decoding/
+   surfaces/progress, stale-course identity and personal enrichment preservation;
+   run relevant exact-head tests and wait for Native CI, inspect its artifacts,
+   merge/delete only without blocking findings. Original c4fdddc9 is handled.
+3. Continue #417/other actionable external feedback once, preserving evidence.
+   No CI-result-only commits; Codex bookkeeping never resets the quiet clock.
+4. End after48 hours with no external PR events and no open PRs, or an explicit
+   owner stop. Every Codex GitHub comment ends `_Generated by Codex_`;
+   every Codex commit ends `Generated-by: Codex`.
