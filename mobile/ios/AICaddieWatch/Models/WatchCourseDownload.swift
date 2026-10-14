@@ -909,7 +909,7 @@ public struct WatchCoursePrepHazardDetail: Decodable, Equatable {
 }
 
 public struct WatchCoursePrepMap: Decodable, Equatable {
-    public let image: String
+    public let image: String?
     public let overlay: WatchCoursePrepOverlay
 }
 

@@ -18,6 +18,8 @@ public struct AICaddieWatchApp: App {
     }
 
     private struct ActiveCourseUpgradeKey: Equatable {
+        /// Bumped to restart a paused upgrade when the app comes back to the front.
+        let retryEpoch: Int
         let roundId: String
         let frontGlobalId: Int
         let loopKey: String?
@@ -35,6 +37,9 @@ public struct AICaddieWatchApp: App {
     /// Sets a round left open aside so its workout session and GPS stop (battery report 2026-10-12).
     /// Checked once a minute with the newest wrist fix.
     @State private var roundIdleTracker = WatchRoundIdleTracker()
+    /// Restarts a paused precise-map upgrade (`ActiveCourseUpgradeKey.retryEpoch`).
+    @State private var courseUpgradeRetryEpoch = 0
+    @State private var lastCourseUpgradeRestart = Date.distantPast
     /// B7 step 1 (实验): record swing candidates and their features; never changes a score.
     @AppStorage("watch.collectSwingFeatures") private var collectSwingFeatures = false
     private let swingCandidateStore = WatchSwingCandidateStore()
@@ -261,6 +266,14 @@ public struct AICaddieWatchApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     reconcileLocationServices()
                     guard phase == .active else { return }
+                    // A map upgrade that ran out of retries (a cold course still being drawn on the
+                    // server) starts again when the golfer looks at the Watch.
+                    // At most every five minutes: a wrist raise is not a reason to start over.
+                    if courseLibrary.preciseUpgradePaused, roundModel.round != nil,
+                       Date().timeIntervalSince(lastCourseUpgradeRestart) >= 5 * 60 {
+                        lastCourseUpgradeRestart = Date()
+                        courseUpgradeRetryEpoch += 1
+                    }
                     syncClient.requestConfigurationFromPhone()
                     Task { await roundModel.retryDeferredFinishes() }
                     Task { await uploadFinishedSwingCandidates() }
@@ -438,6 +451,7 @@ public struct AICaddieWatchApp: App {
             return nil
         }
         return ActiveCourseUpgradeKey(
+            retryEpoch: courseUpgradeRetryEpoch,
             roundId: round.roundId,
             frontGlobalId: frontGlobalId,
             loopKey: round.loopKey,
