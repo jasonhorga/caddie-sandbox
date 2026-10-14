@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, wait
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 import json
@@ -42,6 +42,7 @@ from ai_caddie.caddie.round_loops import (
 from ai_caddie.rounds.score_source import SCORE_EVENT_KINDS, fold_score_source
 from ai_caddie.reports.annotations import annotations_for_target, list_annotations
 from ai_caddie.core.data import hazard_path, read_json
+from ai_caddie.core.priority_work import PriorityExecutor, SELECTED_COURSE
 from ai_caddie.core.fixtures import fixture_history_data
 from ai_caddie.geometry.geometry_evidence import build_route_geometry_evidence, geometry_coverage_for_hole
 from ai_caddie.geometry.shot_projection import local_to_world
@@ -82,10 +83,7 @@ CADDIE_ALTERNATIVE_CARRY_GAP_M = 45.0
 # overlap so the precise upgrade completes in the background, but leave half of a four-core shared
 # homeserver available for the API, database, and other users.  This process-wide pool also prevents
 # simultaneous users/courses from multiplying the CPU-heavy Node/Python children without bound.
-_GEOMETRY_INSTALL_POOL = ThreadPoolExecutor(
-    max_workers=2,
-    thread_name_prefix="course-geometry-install",
-)
+_GEOMETRY_INSTALL_POOL = PriorityExecutor(max_workers=2, name="course-geometry-install")
 logger = logging.getLogger(__name__)
 _EVENT_CURSOR_CACHE_LOCK = threading.Lock()
 _EVENT_CURSOR_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
@@ -899,6 +897,7 @@ def _ensure_geometry_for_course(
     holes: list[int] | None = None,
     *,
     on_hole_complete: Callable[[dict[str, Any]], None] | None = None,
+    priority: int = SELECTED_COURSE,
 ) -> dict[str, Any]:
     from ai_caddie.geometry.geometry_sync import ensure_prodgeometry
 
@@ -938,7 +937,7 @@ def _ensure_geometry_for_course(
 
     for _ in range(min(2, len(indexed_holes))):
         index, local_hole = next(iterator)
-        pending[_GEOMETRY_INSTALL_POOL.submit(ensure_one, local_hole)] = index
+        pending[_GEOMETRY_INSTALL_POOL.submit(ensure_one, local_hole, priority=priority)] = index
 
     while pending:
         completed, _ = wait(tuple(pending), return_when=FIRST_COMPLETED)
@@ -962,7 +961,7 @@ def _ensure_geometry_for_course(
                 index, local_hole = next(iterator)
             except StopIteration:
                 break
-            pending[_GEOMETRY_INSTALL_POOL.submit(ensure_one, local_hole)] = index
+            pending[_GEOMETRY_INSTALL_POOL.submit(ensure_one, local_hole, priority=priority)] = index
 
     results = [results_by_index[index] for index in range(len(indexed_holes))]
     # Both loaders cache missing files. A first course download must be visible to the package
@@ -1229,6 +1228,8 @@ def first_hole_lightweight_course_prep(
     # Composite rounds can show the same physical local hole twice (A+A). Build it once and
     # renumber the returned factual row for each display hole instead of doing duplicate work.
     by_source: dict[tuple[int, int], dict[str, Any] | None] = {}
+    tee_sets: dict[int, int | None] = {}
+    priority_display_holes = set((package.get("enrichmentState") or {}).get("priorityHoles") or [1])
     seeded_rows: list[dict[str, Any]] = []
     missing_rows: list[dict[str, Any]] = []
     for package_hole in holes:
@@ -1239,8 +1240,27 @@ def first_hole_lightweight_course_prep(
             continue
         source_key = (source_global_id, source_local_hole)
         if source_key not in by_source:
+            vector = None
+            # The install/foreground path already persisted factual vectors. Reuse them before
+            # trying the optional CourseView catalogue or rebuilding a frame for every package.
+            from ai_caddie.core.data import mesh_path
+            if mesh_path(source_global_id, source_local_hole).exists():
+                try:
+                    from ai_caddie.courses.vector_prep import cached_vector_hole
+                    from ai_caddie.caddie.analysis import tee_set_for_box
+
+                    if source_global_id not in tee_sets:
+                        tee_sets[source_global_id] = tee_set_for_box(
+                            source_global_id, str(course.get("teeBox") or "blue"), colour_fallback=False,
+                        )
+                    vector = cached_vector_hole(
+                        source_global_id, source_local_hole, tee_set=tee_sets[source_global_id],
+                        build_if_missing=round_hole in priority_display_holes,
+                    )
+                except Exception:
+                    pass
             try:
-                by_source[source_key] = course_prep.lightweight_prep_hole(
+                by_source[source_key] = vector or course_prep.lightweight_prep_hole(
                     source_global_id,
                     source_local_hole,
                     **prep_kwargs,

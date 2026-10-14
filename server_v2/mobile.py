@@ -424,7 +424,14 @@ def build_mobile_course_package_response(
     loops: list[tuple[int, str]],
     include_event_cursor: bool = True,
     player_id: str = OWNER_ID,
+    prepare_map: bool = False,
+    priority_hole: int = 1,
 ) -> LiveRoundPackageResponse:
+    if prepare_map:
+        from server_v2.map_startup import prepare_priority_hole
+
+        prepare_priority_hole(loops, priority_hole=priority_hole, tee_box=tee_box)
+        mark_request_stage("priority_vector")
     data, mode = load_history_data_for_mode(player_id=player_id)
     mark_request_stage("history_load")
     key = (
@@ -435,6 +442,7 @@ def build_mobile_course_package_response(
         # The ordered loop identity: 前→前 / 前→后 / 后→前 / 后→后 never share a result.
         round_loop_key(loops),
         bool(ensure_geometry),
+        int(priority_hole),
         _package_time_bucket(captured_at),
         _history_package_signature(data),
     )

@@ -3,9 +3,9 @@
 > Short durable continuity ledger. Only this file is authoritative.
 > Completed/history is preserved verbatim in dated `docs/archive/` files.
 
-**Updated:** 2026-10-14, #425 exact-head review complete; author fixes pending
-**Canonical baseline:** main `3343a8e8` (Build 87 source `bfe850b7`)
-**Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress`
+**Updated:** 2026-10-14, nearby/cold-map backend implementation
+**Canonical baseline:** main `4e2d938a` (Build 87 source `bfe850b7`)
+**Current slice:** `BACKEND-NEARBY-MAP-STARTUP` — `in-progress`
 
 ## Current state
 
@@ -29,6 +29,18 @@
 
 ## Unfinished queue
 
+- `BACKEND-NEARBY-MAP-STARTUP` — `in-progress`: issue #426 records the
+  owner target (nearby map in seconds; unseen usable map <30 s) and backend/
+  Watch ownership. Implement low-priority regional all-hole prep/topo within
+  30 km and first-package priority-hole vectors before raster work. Verify
+  cold, warm and contended timings; retain ordered loops, Tee, release binding
+  and player isolation. Claude owns Watch vector rendering/nearby downloads.
+  Implementation now queues all nearby rows, reserves a foreground geometry
+  lane, yields the durable coordinator after 1 nearby/2 selected holes, and
+  persists factual route/surface/FMB vectors independently of rasters. Latest
+  targeted tests: 229 pass (2 data-dependent skips). Genuine cold 28263:
+  vector ready 6.844 s, drawable first package 14.125 s, repeat 0.615 s;
+  nine-hole full install 63 s after enqueue. Contended 30189 run is in flight.
 - `PR-425-COLD-WATCH-MAP` — `evidence-open`: exact head `c4fdddc9`;
   ordinary and Native `38594117897` green; 126 contracts + 12 parity passed.
   All 47 Watch + 97 iPhone/design PNGs match the reviewed #424 baseline.
@@ -48,7 +60,7 @@
 - `WATCH-IDLE-PHYSICAL-ACCEPTANCE` — `evidence-open`: owner device
   validation remains required for #423.
 - `PR-421-FEEDBACK-DELIVERY` — `evidence-open`: awaiting external review.
-- `PR-FEEDBACK-CONTINUOUS` — `in-progress`: process external events once,
+- `PR-FEEDBACK-CONTINUOUS` — `queued`: process external events once,
   ignore Codex-owned CI/comments, and retain one same-turn feedback waiter.
 - `NATIVE-FIXTURE-LAYOUT-STABILITY` and `IOS-STATUS-CONTRAST` —
   `queued`; `OWNER-DEVICE-BUILD87` — `evidence-open`: Crown score row,
@@ -102,13 +114,24 @@
   `/home/ubuntu/claude-web-data/repo/garmin-ai-caddie-watch417-20261011`,
   Codex-owned, back on `codex/pr424-production-harness-20261013`, expires
   2026-10-18 08:30 UTC.
+- That clean-tracked worktree is now reused for backend implementation on
+  `codex/backend-nearby-map-startup-20261014`, owner Codex, created
+  2026-10-14, expires 2026-10-21. Historical untracked audit controls remain.
+- Backend verification snapshot `/dev/shm/garmin-ai-caddie-map-startup-20261014`
+  is active/read-only, expires 2026-10-15. Persistent evidence and manifests:
+  `/home/jason/garmin-ai-caddie-data/operations/map-startup-20261014`.
+  Test containers are auto-removed. Probe container
+  `codex-map-startup-probe-20261014` is in-flight (terminal `27283`), reuses
+  the existing API image and protected private volume; no service, port, DB
+  migration, dependency environment or token clone. Verification journals
+  live under evidence/jobs, isolated from production jobs. Preserve new course
+  assets; drain/cancel only verification regional workers when probe ends.
 - Existing untracked `.codex-*` evidence is historical and must remain.
   Archives for this closeout are
   `docs/archive/PROJECT_STATE-2026-10-13-pr424-before-close.md` and
   `docs/archive/2026-10-13-pr424-review-6eef9e13-before-close.md`.
-- Feedback waiter `17035` returned the already-handled failed release
-  `38525467740`; deduplicated without uploading. Successor terminal `79608`
-  continues the untouched feedback cursor in this same turn. No second
+- Feedback `19026` returned the already-reviewed c4fdddc9 Native CI event;
+  deduplicated. Terminal `85049` continues the untouched cursor. No second
   monitor. All Build 87 release/Apple waiters returned terminal conclusions.
 - Build 87 persistent evidence:
   `/home/jason/garmin-ai-caddie-data/operations/release87-20261014`.
@@ -118,8 +141,10 @@
 
 ## Next action and stop conditions
 
-1. Retain feedback terminal `79608` and resume same-turn waiting; handle its
-   conclusion once, then restart from the unchanged cursor. Ignore own CI.
+1. Implement and verify #426 backend cold/nearby map path, publish measured
+   phase timings, and deploy the verified API plus matching sync image.
+   Collect contended probe `27283`, push implementation PR, wait exact-head
+   full CI, then complete deployment/public readiness and warm/cold probes.
 2. On #425 author fixes, recheck null-image decode plus real upgrade progress,
    geometry/generation polling, exact-head tests/Native artifacts; merge/delete
    the branch only when blockers clear. Re-delivered c4fdddc9 CI is handled.
