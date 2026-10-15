@@ -467,7 +467,7 @@ final class WatchCourseDownloadTests: XCTestCase {
     /// failed to decode every ready package, retried silently and never drew a map.
     func testRouteOnlySeedWithNullImageDecodesAndDrawsAVectorMap() throws {
         let option = WatchCourseOption(globalId: 31669, name: "北京丽宫", holes: 18, teeBox: "Blue")
-        let seed = #"{"schema":"ai-caddie-course-prep-v1","globalId":31669,"holeCount":1,"clubs":[],"holes":[{"hole":1,"par":4,"geometryCoverage":"ready","geometryRevision":"0123456789abcdef","hazards":{},"map":{"image":null,"overlay":{"w":1000,"h":800,"route":[[100.0,700.0,0.0],[500.0,400.0,200.0],[600.0,100.0,400.0]],"surfaces":[{"kind":"green","polygons":[]}]}},"greenDistances":{"available":true,"frontM":350.0,"middleM":360.0,"backM":370.0,"frontLat":40.0035,"frontLon":116.005,"middleLat":40.0036,"middleLon":116.0051,"backLat":40.0037,"backLon":116.0052},"holeImageProjection":{"available":true,"widthPx":1000,"heightPx":800,"refs":[{"lat":40.0,"lon":116.0,"px":100.0,"py":700.0},{"lat":40.0,"lon":116.001,"px":200.0,"py":700.0},{"lat":40.001,"lon":116.0,"px":100.0,"py":600.0}]}}]}"#
+        let seed = #"{"schema":"ai-caddie-course-prep-v1","globalId":31669,"holeCount":1,"clubs":[],"holes":[{"hole":1,"par":4,"geometryCoverage":"ready","geometryRevision":"0123456789abcdef","hazards":{},"map":{"image":null,"overlay":{"w":1000,"h":800,"route":[[100.0,700.0,0.0],[500.0,400.0,200.0],[600.0,100.0,400.0]],"surfaces":[{"kind":"Fairway","polygons":[{"outerPx":[[450.0,500.0],[560.0,500.0],[560.0,300.0],[450.0,300.0]],"holesPx":[]}]},{"kind":"Bunker","polygons":[{"outerPx":[[600.0,350.0],[630.0,350.0],[620.0,330.0]]}]},{"kind":"Lake","polygons":[{"outerPx":[[200.0,600.0],[300.0,600.0],[300.0,500.0],[200.0,500.0]],"holesPx":[[[240.0,560.0],[260.0,560.0],[250.0,540.0]]]}]}]}},"greenDistances":{"available":true,"frontM":350.0,"middleM":360.0,"backM":370.0,"frontLat":40.0035,"frontLon":116.005,"middleLat":40.0036,"middleLon":116.0051,"backLat":40.0037,"backLon":116.0052},"holeImageProjection":{"available":true,"widthPx":1000,"heightPx":800,"refs":[{"lat":40.0,"lon":116.0,"px":100.0,"py":700.0},{"lat":40.0,"lon":116.001,"px":200.0,"py":700.0},{"lat":40.001,"lon":116.0,"px":100.0,"py":600.0}]}}]}"#
         let package = try client.decodeCoursePackage(WatchPackageFixture.packageData(
             roundId: "watch-cold-1",
             course: #"{"globalId":31669,"name":"北京丽宫","teeBox":"Blue"}"#,
@@ -486,6 +486,11 @@ final class WatchCourseDownloadTests: XCTestCase {
         )
         let hole = try XCTUnwrap(download.template.makeRound(roundId: "watch-cold-1").holeStates.first)
         XCTAssertEqual(hole.holeMap?.route?.count, 3, "the vector map is there before any raster")
+        // #425 review: the factual surfaces reach the drawable geometry (fairway, bunker, lake + island).
+        XCTAssertEqual(hole.holeMap?.surfaces?.map(\.kind), ["Fairway", "Bunker", "Lake"])
+        let geometry = try XCTUnwrap(WatchHoleMapGeometry.from(holeMap: hole.holeMap, image: nil))
+        XCTAssertEqual(geometry.surfaces.map(\.kind), ["fairway", "bunker", "lake"])
+        XCTAssertEqual(geometry.surfaces.last?.holes.count, 1)
         XCTAssertEqual(hole.centerGreenM, 360)
         XCTAssertTrue(download.images.isEmpty, "no raster yet")
     }

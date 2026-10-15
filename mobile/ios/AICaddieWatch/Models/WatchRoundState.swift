@@ -327,6 +327,8 @@ public struct WatchHoleMap: Codable, Equatable {
     public let route: [[Double]]?
     /// Drawing-only CourseView outline used by a vector map before the precise bitmap arrives.
     public let greenOutline: [[Double]]?
+    /// Real surfaces (fairway, bunkers, lakes, …) for the vector map before the bitmap arrives.
+    public let surfaces: [WatchMapSurface]?
 
     public init(
         w: Int,
@@ -337,7 +339,8 @@ public struct WatchHoleMap: Codable, Equatable {
         apex: [Double],
         greenCtrl: [Double],
         route: [[Double]]? = nil,
-        greenOutline: [[Double]]? = nil
+        greenOutline: [[Double]]? = nil,
+        surfaces: [WatchMapSurface]? = nil
     ) {
         self.w = w
         self.h = h
@@ -348,6 +351,7 @@ public struct WatchHoleMap: Codable, Equatable {
         self.greenCtrl = greenCtrl
         self.route = route
         self.greenOutline = greenOutline
+        self.surfaces = surfaces
     }
 }
 

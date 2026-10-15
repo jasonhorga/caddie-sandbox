@@ -50,6 +50,10 @@ public final class WatchCourseLibrary: ObservableObject {
     /// The active round's precise-map upgrade gave up its retries; the app restarts it when it comes
     /// back to the front.
     public private(set) var preciseUpgradePaused = false
+    /// The install journal refused this player (403): no progress hints, so the status-only phase
+    /// fetches the package every `preciseUpgradeBlindFetchEvery` attempts instead of every minute.
+    private(set) var installStatusForbidden = false
+    static let preciseUpgradeBlindFetchEvery = 3
 
     private let store: WatchCourseStore
     private let imageStore: WatchHoleImageStore
@@ -583,7 +587,13 @@ public final class WatchCourseLibrary: ObservableObject {
             let status = attempt < Self.preciseUpgradeMaximumAttempts - 1
                 ? await fetchInstallStatus(selection: selection, config: config)
                 : nil
-            if status == nil { fetchPackage = true }
+            if status == nil {
+                // Without a progress hint: every attempt while it may be the journal's absence, but
+                // only every few minutes when the journal refused us (a full fetch is not free).
+                fetchPackage = !installStatusForbidden
+                    || attempt + 1 < Self.preciseUpgradeFullFetchAttempts
+                    || (attempt + 1) % Self.preciseUpgradeBlindFetchEvery == 0
+            }
             if let status {
                 let phase = status.phase.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 if ["queued", "running", "ready"].contains(phase) {
@@ -1669,13 +1679,17 @@ public final class WatchCourseLibrary: ObservableObject {
         selection: WatchCourseSelection,
         config: WatchRoundConfig
     ) async -> WatchCourseInstallStatus? {
-        guard !Task.isCancelled else { return nil }
+        guard !Task.isCancelled, !installStatusForbidden else { return nil }
         do {
             return try await makeClient(config).fetchCourseInstallStatus(
                 globalId: selection.front.globalId,
                 teeBox: selection.teeBox,
                 loops: selection.loopsQuery
             )
+        } catch WatchBackendClientError.http(status: 403, body: _) {
+            // A player token may not read the install journal (#425 review): stop asking this launch.
+            installStatusForbidden = true
+            return nil
         } catch {
             // The endpoint is additive and older deployments may not have it. The local Watch
             // package/image stores remain authoritative when this probe is unavailable.

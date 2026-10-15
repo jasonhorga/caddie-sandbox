@@ -917,6 +917,31 @@ public struct WatchCoursePrepOverlay: Decodable, Equatable {
     public let w: Int
     public let h: Int
     public let route: [[Double]]
+    /// The hole's real surfaces in the same pixel frame (#426): fairway, fringe, tee, green, bunker
+    /// and lake boundaries from the course mesh. Drawn before any raster exists. Older servers omit it.
+    public let surfaces: [WatchMapSurface]?
+}
+
+/// One kind of course surface and its boundary polygons (`outerPx` with optional `holesPx`).
+public struct WatchMapSurface: Codable, Equatable {
+    public let kind: String
+    public let polygons: [WatchMapSurfacePolygon]
+
+    public init(kind: String, polygons: [WatchMapSurfacePolygon]) {
+        self.kind = kind
+        self.polygons = polygons
+    }
+}
+
+public struct WatchMapSurfacePolygon: Codable, Equatable {
+    public let outerPx: [[Double]]
+    /// Interior rings (an island in a lake, a hole in a fairway) the fill must leave open.
+    public let holesPx: [[[Double]]]?
+
+    public init(outerPx: [[Double]], holesPx: [[[Double]]]? = nil) {
+        self.outerPx = outerPx
+        self.holesPx = holesPx
+    }
 }
 
 public struct WatchCoursePrepGreenDistances: Decodable, Equatable {
