@@ -76,14 +76,20 @@ jobs:
         env:
           API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.AI_CADDIE_API_BASE_URL || 'https://caddie.taile36706.ts.net' }}
           PLAYER_TOKEN: ${{ secrets.AI_CADDIE_CI_PLAYER_TOKEN }}
-          # Push self-tests use a region the server is unlikely to have prepared (each run warms
-          # the course it picks, so the next run must not reuse it).
-          COLD_LAT: ${{ github.event.inputs.latitude || vars.COLD_START_LAT || '43.06' }}
-          COLD_LON: ${{ github.event.inputs.longitude || vars.COLD_START_LON || '141.35' }}
+          # Each run warms the course it picks, so push self-tests rotate through regions the
+          # server is unlikely to have prepared (by run number) unless a point is given.
+          COLD_LAT: ${{ github.event.inputs.latitude }}
+          COLD_LON: ${{ github.event.inputs.longitude }}
+          RUN_NUMBER: ${{ github.run_number }}
           COLD_GID: ${{ github.event.inputs.global_id }}
         run: |
           set -euo pipefail
           test "${#PLAYER_TOKEN}" -ge 32
+          if [ -z "$COLD_LAT" ] || [ -z "$COLD_LON" ]; then
+            REGIONS=("38.27 140.87" "26.21 127.68" "35.18 129.08" "-37.81 144.96" "-33.92 18.42" "38.72 -9.14" "53.35 -6.26" "49.28 -123.12" "-36.85 174.76" "55.95 -3.19" "45.50 -73.57" "-34.60 -58.38")
+            read -r COLD_LAT COLD_LON <<< "${REGIONS[$((RUN_NUMBER % ${#REGIONS[@]}))]}"
+          fi
+          echo "Looking for a cold course near $COLD_LAT,$COLD_LON"
           APP="$RUNNER_TEMP/WatchDerivedData/Build/Products/Debug-watchsimulator/AICaddieWatch.app"
           BID=com.ai-caddie.mobile.watchkitapp
           xcrun simctl install "$WATCH_UDID" "$APP"
