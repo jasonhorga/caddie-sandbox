@@ -3,8 +3,8 @@
 > Short durable continuity ledger. Only this file is authoritative.
 > Completed/history is preserved in dated `docs/archive/` files.
 
-**Updated:** 2026-10-15 19:31 UTC; #421 exact-head review, merge, branch deletion and ledger archive complete
-**Canonical baseline:** main `d9de84ad1e7191b77e28594804f7311842f763d8`
+**Updated:** 2026-10-15 21:55 UTC; main provenance regression fixed and CI verified
+**Canonical baseline:** main `cf535491b3bfd0ef27756b098aac8d639dec506e`
 **Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress`
 
 ## Current state and unfinished work
@@ -34,6 +34,15 @@
   https://github.com/jasonhorga/garmin-ai-caddie/pull/421#issuecomment-6200552328;
   merge commit is `d9de84ad` and its branch is deleted. #422 is draft/test-only
   and must not merge.
+- `MAIN-PROVENANCE-FIX` — `done`: `cf535491` changed the legacy feedback
+  filter to require a final standalone attribution line and restored detailed
+  self-receipt logs. The exact main snapshot passed 20/20 provenance tests;
+  CI run https://github.com/jasonhorga/garmin-ai-caddie/actions/runs/38813163550
+  passed backend, frontend and docker.
+- #429 is open at exact head `aa5cfac2`; its backend CI failed on the pre-fix
+  main behavior. Codex posted the fix and run evidence:
+  https://github.com/jasonhorga/garmin-ai-caddie/pull/429#issuecomment-6203148416.
+  Await the author's rebase and green exact-head CI before review/merge.
   Continue processing new PR heads/comments once their required CI is terminal.
 - The owner target remains seconds for nearby maps and under 30 s for an unseen
   course. Keep Watch cold-start and caddie correctness evidence explicit.
@@ -55,6 +64,8 @@
   the current release candidate verified above.
 - #421 exact-head test snapshot was `/dev/shm/codex-garmin-ai-caddie-pr421-62201d90`;
   it was removed immediately after the 19-test pass. No review snapshot remains.
+- Main-fix verification snapshot `/dev/shm/codex-main-waitfix-20261015` was
+  removed after the 20-test pass.
 
 ## Owned resources and cleanup
 
