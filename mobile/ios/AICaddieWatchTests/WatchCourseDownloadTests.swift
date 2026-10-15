@@ -518,6 +518,26 @@ final class WatchCourseDownloadTests: XCTestCase {
         ]).playableHoleCount, 18)
     }
 
+    /// 2026-10-15 cold-start capture: a precise hole dropped back to the vector "地图准备中" view for
+    /// one retry because the package's route-only seed was republished over it.
+    func testALighterRowForTheSameReleaseNeverReplacesAPreciseMap() {
+        func row(_ coverage: String, _ revision: String?, club: String?) -> WatchRoundState {
+            WatchRoundState(
+                roundId: "r", hole: 1, par: 4, distanceM: 350, suggestedClub: club, selectedClub: nil,
+                globalId: 31669, sourceLocalHole: 1, courseHoleNumber: 1,
+                geometryCoverage: coverage, geometryRevision: revision,
+                score: 0, putts: 0, penaltyCount: 0, caddieConfidence: "offline"
+            )
+        }
+        let precise = row("ready", "rev-a", club: "7I")
+        XCTAssertEqual(precise.applyingCourseMapUpgrade(row("partial", nil, club: nil)), precise)
+        XCTAssertEqual(precise.applyingCourseMapUpgrade(row("partial", "rev-a", club: nil)), precise)
+        // A new release still takes over (its raster follows).
+        XCTAssertEqual(precise.applyingCourseMapUpgrade(row("partial", "rev-b", club: nil)).geometryRevision, "rev-b")
+        // And a ready row always applies.
+        XCTAssertEqual(row("partial", nil, club: nil).applyingCourseMapUpgrade(precise).geometryCoverage, "ready")
+    }
+
     func testBuildPrefersSharedTopoBitmapOverLegacyPrepJPEG() throws {
         let option = WatchCourseOption(
             globalId: 31669,

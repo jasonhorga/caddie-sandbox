@@ -539,8 +539,8 @@ public struct WatchUITestRoot: View {
                 WatchRoundContainerView(
                     model: model,
                     holeGeometry: coldStartGeometry,
-                    watchGreenYards: realCourseGreenYards,
-                    shotLocation: realCourseRuntimeFix
+                    watchGreenYards: coldStartGreenYards,
+                    shotLocation: coldStartFix
                 )
             } else {
                 VStack(spacing: 8) {
@@ -557,6 +557,35 @@ public struct WatchUITestRoot: View {
             realCourseTaskStarted = true
             Task { @MainActor in await runColdStartTiming() }
         }
+    }
+
+    /// The simulated wrist on the tee: the package's tee point, else the route's first point projected
+    /// back to GPS (a factual row may carry no tee coordinates).
+    private var coldStartFix: WatchLocationFix? {
+        if let fix = realCourseRuntimeFix { return fix }
+        guard let state = model.activeHoleState,
+              let start = state.holeMap?.route?.first, start.count >= 2,
+              let refs = state.holeImageProjection?.refs,
+              let point = WatchGeoMath.coordinate(
+                  fromImagePx: start[0], py: start[1],
+                  refs: refs.map { (lat: $0.lat, lon: $0.lon, px: $0.px, py: $0.py) }
+              ) else { return nil }
+        return WatchLocationFix(
+            coordinate: CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude),
+            horizontalAccuracyM: 5,
+            capturedAt: "2026-07-31T00:00:00Z"
+        )
+    }
+
+    private var coldStartGreenYards: (front: Int?, center: Int?, back: Int?)? {
+        guard let state = model.activeHoleState, let fix = coldStartFix else { return nil }
+        let latitude = fix.coordinate.latitude
+        let longitude = fix.coordinate.longitude
+        return (
+            front: WatchGeoMath.yards(from: latitude, longitude, toLat: state.frontGreenLat, state.frontGreenLon),
+            center: WatchGeoMath.yards(from: latitude, longitude, toLat: state.centerGreenLat, state.centerGreenLon),
+            back: WatchGeoMath.yards(from: latitude, longitude, toLat: state.backGreenLat, state.backGreenLon)
+        )
     }
 
     /// The app's own rule (`AICaddieWatchApp.activeHoleGeometry`): a vector map without a raster.

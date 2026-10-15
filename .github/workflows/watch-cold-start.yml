@@ -103,19 +103,22 @@ jobs:
             SIMCTL_CHILD_COLD_START_GLOBAL_ID="$COLD_GID" \
             xcrun simctl launch "$WATCH_UDID" "$BID" -uitest-screen cold-start-timing
           START=$(date +%s)
+          START_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
           RESULT=""
-          # Up to 17 minutes (the fixture itself stops at 15); a frame every 5 s for the first
-          # 2 minutes, then every 30 s.
+          # Up to 17 minutes (the fixture itself stops at 15); a frame as often as the simulator
+          # allows for the first 30 s (the first map lands within seconds), every 5 s to 2 minutes,
+          # then every 30 s.
           while true; do
             NOW=$(date +%s); ELAPSED=$((NOW - START))
             CONTAINER=$(xcrun simctl get_app_container "$WATCH_UDID" "$BID" data 2>/dev/null || true)
-            xcrun simctl io "$WATCH_UDID" screenshot "cold-start/t$(printf '%04d' "$ELAPSED").png" >/dev/null 2>&1 || true
+            NOW_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
+            xcrun simctl io "$WATCH_UDID" screenshot "cold-start/ms$(printf '%07d' "$((NOW_MS - START_MS))").png" >/dev/null 2>&1 || true
             for marker in cold-start-timing-ready cold-start-timing-failed; do
               if [ -f "$CONTAINER/Documents/$marker" ]; then RESULT="$CONTAINER/Documents/$marker"; fi
             done
             [ -n "$RESULT" ] && break
             [ "$ELAPSED" -ge 1020 ] && break
-            if [ "$ELAPSED" -lt 120 ]; then sleep 5; else sleep 30; fi
+            if [ "$ELAPSED" -lt 30 ]; then sleep 0.5; elif [ "$ELAPSED" -lt 120 ]; then sleep 5; else sleep 30; fi
           done
           if [ -z "$RESULT" ]; then
             echo "::error::no timing result after 17 minutes"
