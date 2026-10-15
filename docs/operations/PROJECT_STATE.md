@@ -3,8 +3,8 @@
 > Short durable continuity ledger. Only this file is authoritative.
 > Completed/history is preserved in dated `docs/archive/` files.
 
-**Updated:** 2026-10-15 14:32 UTC; readiness cutover, Build 89 upload, Apple read-only verification and cleanup complete
-**Canonical baseline:** main `e1243ba9c516f2983a56aab1cdbd032d4595ab9c`
+**Updated:** 2026-10-15 19:31 UTC; #421 exact-head review, merge, branch deletion and ledger archive complete
+**Canonical baseline:** main `d9de84ad1e7191b77e28594804f7311842f763d8`
 **Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress`
 
 ## Current state and unfinished work
@@ -29,7 +29,11 @@
   `com.ai-caddie.mobile.watchkitapp`.
 - #425 and #427 are merged/deployed. #417 remains an evidence issue;
   #418 is draft/evidence-open; #420 awaits the requested 49 mm transitions;
-  #421 awaits external review; #422 is draft/test-only and must not merge.
+  #421 is done: exact head `62201d90` passed 19/19 provenance tests,
+  `bash -n`, and `git diff --check`; PASS comment
+  https://github.com/jasonhorga/garmin-ai-caddie/pull/421#issuecomment-6200552328;
+  merge commit is `d9de84ad` and its branch is deleted. #422 is draft/test-only
+  and must not merge.
   Continue processing new PR heads/comments once their required CI is terminal.
 - The owner target remains seconds for nearby maps and under 30 s for an unseen
   course. Keep Watch cold-start and caddie correctness evidence explicit.
@@ -49,6 +53,8 @@
   timings.
 - Build 87 remains in the internal group as historical baseline; Build 89 is
   the current release candidate verified above.
+- #421 exact-head test snapshot was `/dev/shm/codex-garmin-ai-caddie-pr421-62201d90`;
+  it was removed immediately after the 19-test pass. No review snapshot remains.
 
 ## Owned resources and cleanup
 
@@ -59,7 +65,7 @@
   `/home/jason/garmin-ai-caddie-data/operations/cleanup-codex-readiness-428-20261015.txt`.
   The temporary cleanup container was removed; shared BuildKit cache and
   production rollback container were left untouched.
-- Release and Apple waiters are terminal; no Codex waiter or temporary build
+- Release and Apple waiters are terminal; no temporary build or review
   container remains. Persistent release evidence above is retained.
 - Existing review worktree
   `/home/ubuntu/claude-web-data/repo/garmin-ai-caddie-watch417-20261011`
