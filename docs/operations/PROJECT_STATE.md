@@ -3,8 +3,8 @@
 > Short durable continuity ledger. Only this file is authoritative.
 > Completed/history is preserved in dated `docs/archive/` files.
 
-**Updated:** 2026-10-15 21:55 UTC; main provenance regression fixed and CI verified
-**Canonical baseline:** main `cf535491b3bfd0ef27756b098aac8d639dec506e`
+**Updated:** 2026-10-15 22:23 UTC; #429 reviewed, merged and branch deleted
+**Canonical baseline:** main `ec8cddfe1e9ed517202acc62750f7f72b01068e4`
 **Current slice:** `PR-FEEDBACK-CONTINUOUS` — `in-progress`
 
 ## Current state and unfinished work
@@ -39,10 +39,12 @@
   self-receipt logs. The exact main snapshot passed 20/20 provenance tests;
   CI run https://github.com/jasonhorga/garmin-ai-caddie/actions/runs/38813163550
   passed backend, frontend and docker.
-- #429 is open at exact head `aa5cfac2`; its backend CI failed on the pre-fix
-  main behavior. Codex posted the fix and run evidence:
-  https://github.com/jasonhorga/garmin-ai-caddie/pull/429#issuecomment-6203148416.
-  Await the author's rebase and green exact-head CI before review/merge.
+- `PR429-REVIEW` — `done`: rebased exact head `2b39d63a` passed 33/33
+  deployment harness tests on homeserver and required CI `38813956158`.
+  PASS comment (no P1/P2):
+  https://github.com/jasonhorga/garmin-ai-caddie/pull/429#issuecomment-6203460746.
+  Merged as `ec8cddfe`; remote branch deleted. Real sandbox deployment and
+  agenthub cutover remain future operations; production is unchanged.
   Continue processing new PR heads/comments once their required CI is terminal.
 - The owner target remains seconds for nearby maps and under 30 s for an unseen
   course. Keep Watch cold-start and caddie correctness evidence explicit.
@@ -66,6 +68,11 @@
   it was removed immediately after the 19-test pass. No review snapshot remains.
 - Main-fix verification snapshot `/dev/shm/codex-main-waitfix-20261015` was
   removed after the 20-test pass.
+- #429 test command: `python3 -m unittest -v tests.test_agenthub_deploy`
+  in author's clean exact-head checkout
+  `/home/jason/codex-runs/garmin-ai-caddie-claude-deploy-20261015`;
+  33 tests in 87.490 s, exit 0. No dependency installation or real Docker
+  deployment; test temporary directories cleaned by unittest.
 
 ## Owned resources and cleanup
 
