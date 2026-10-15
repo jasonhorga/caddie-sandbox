@@ -121,7 +121,13 @@ public struct WatchCourseOption: Codable, Equatable, Identifiable {
         _ teeOptions: [WatchCourseTee],
         selectedTee: String? = nil
     ) -> WatchCourseOption {
-        WatchCourseOption(
+        // The Tee list comes from the course's current release: when its tees agree on 9 or 18
+        // holes, that count wins over a retained catalogue row (26557 was listed as 18 holes while
+        // its release is one nine; a stale 18 asked the server for `:front` and got 422).
+        let teeHoleCounts = Set(teeOptions.compactMap(\.holeCount).filter { $0 == 9 || $0 == 18 })
+        let releaseHoles = teeHoleCounts.count == 1 ? teeHoleCounts.first : nil
+        let correctedSegmentHoles = releaseHoles.flatMap { $0 == playableHoleCount ? nil : $0 } ?? segmentHoles
+        return WatchCourseOption(
             globalId: globalId,
             name: name,
             holes: holes,
@@ -129,7 +135,7 @@ public struct WatchCourseOption: Codable, Equatable, Identifiable {
             venueName: venueName,
             venueNameSource: venueNameSource,
             segmentLabel: segmentLabel,
-            segmentHoles: segmentHoles,
+            segmentHoles: correctedSegmentHoles,
             latitude: latitude,
             longitude: longitude,
             tees: teeOptions.map(\.teeBox),

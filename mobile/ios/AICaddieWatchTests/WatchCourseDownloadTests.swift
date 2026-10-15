@@ -495,6 +495,29 @@ final class WatchCourseDownloadTests: XCTestCase {
         XCTAssertTrue(download.images.isEmpty, "no raster yet")
     }
 
+    /// #425 review (26557): the catalogue retained 18 holes while the release is one nine. The Tee
+    /// list is the release's authority, so the selection asks for `:all`, not a `:front` the server
+    /// rejects with 422.
+    func testReleaseTeesCorrectAStaleHoleCount() {
+        let stale = WatchCourseOption(globalId: 26557, name: "Golfclub", holes: 18, teeBox: nil)
+        let tees = [
+            WatchCourseTee(teeBox: "Gelb", name: "Gelb", geometrySet: 1, yards: 2900, holeCount: 9, isDefault: true),
+            WatchCourseTee(teeBox: "Rot", name: "Rot", geometrySet: 2, yards: 2600, holeCount: 9, isDefault: false),
+        ]
+        let corrected = stale.withTees(tees, selectedTee: "Gelb")
+        XCTAssertEqual(corrected.playableHoleCount, 9)
+        XCTAssertEqual(WatchCourseSelection(front: corrected, teeBox: "Gelb").loopKey, "26557:all")
+
+        // Agreeing tees leave a correct row alone; disagreeing or missing counts change nothing.
+        XCTAssertEqual(stale.withTees([tees[0]].map { _ in
+            WatchCourseTee(teeBox: "Gelb", name: "Gelb", geometrySet: 1, yards: 5800, holeCount: 18, isDefault: true)
+        }).playableHoleCount, 18)
+        XCTAssertEqual(stale.withTees([
+            WatchCourseTee(teeBox: "A", name: "A", geometrySet: 1, yards: 1, holeCount: 9, isDefault: true),
+            WatchCourseTee(teeBox: "B", name: "B", geometrySet: 2, yards: 1, holeCount: 18, isDefault: false),
+        ]).playableHoleCount, 18)
+    }
+
     func testBuildPrefersSharedTopoBitmapOverLegacyPrepJPEG() throws {
         let option = WatchCourseOption(
             globalId: 31669,
