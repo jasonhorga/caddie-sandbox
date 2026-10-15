@@ -635,7 +635,9 @@ public struct WatchUITestRoot: View {
         await library.refreshNearby(latitude: latitude, longitude: longitude, radiusKm: 80, config: config)
         note("nearby", ["count": library.nearbyCourses.count])
         var chosen: (option: WatchCourseOption, selection: WatchCourseSelection, status: String)?
-        let candidates = forcedId.map { id in library.nearbyCourses.filter { $0.globalId == id } } ?? library.nearbyCourses
+        // A full 18-hole course is the harder, more representative case; short courses come last.
+        let candidates = forcedId.map { id in library.nearbyCourses.filter { $0.globalId == id } }
+            ?? library.nearbyCourses.sorted { ($0.playableHoleCount == 18 ? 0 : 1) < ($1.playableHoleCount == 18 ? 0 : 1) }
         for option in candidates.prefix(25) {
             let tees = await library.loadCourseTees(globalId: option.globalId, config: config)
             guard let tee = tees.first else { continue }
