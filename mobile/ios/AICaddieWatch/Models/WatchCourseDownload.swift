@@ -121,7 +121,13 @@ public struct WatchCourseOption: Codable, Equatable, Identifiable {
         _ teeOptions: [WatchCourseTee],
         selectedTee: String? = nil
     ) -> WatchCourseOption {
-        WatchCourseOption(
+        // The Tee list comes from the course's current release: when its tees agree on 9 or 18
+        // holes, that count wins over a retained catalogue row (26557 was listed as 18 holes while
+        // its release is one nine; a stale 18 asked the server for `:front` and got 422).
+        let teeHoleCounts = Set(teeOptions.compactMap(\.holeCount).filter { $0 == 9 || $0 == 18 })
+        let releaseHoles = teeHoleCounts.count == 1 ? teeHoleCounts.first : nil
+        let correctedSegmentHoles = releaseHoles.flatMap { $0 == playableHoleCount ? nil : $0 } ?? segmentHoles
+        return WatchCourseOption(
             globalId: globalId,
             name: name,
             holes: holes,
@@ -129,7 +135,7 @@ public struct WatchCourseOption: Codable, Equatable, Identifiable {
             venueName: venueName,
             venueNameSource: venueNameSource,
             segmentLabel: segmentLabel,
-            segmentHoles: segmentHoles,
+            segmentHoles: correctedSegmentHoles,
             latitude: latitude,
             longitude: longitude,
             tees: teeOptions.map(\.teeBox),
@@ -909,7 +915,7 @@ public struct WatchCoursePrepHazardDetail: Decodable, Equatable {
 }
 
 public struct WatchCoursePrepMap: Decodable, Equatable {
-    public let image: String
+    public let image: String?
     public let overlay: WatchCoursePrepOverlay
 }
 
@@ -917,6 +923,31 @@ public struct WatchCoursePrepOverlay: Decodable, Equatable {
     public let w: Int
     public let h: Int
     public let route: [[Double]]
+    /// The hole's real surfaces in the same pixel frame (#426): fairway, fringe, tee, green, bunker
+    /// and lake boundaries from the course mesh. Drawn before any raster exists. Older servers omit it.
+    public let surfaces: [WatchMapSurface]?
+}
+
+/// One kind of course surface and its boundary polygons (`outerPx` with optional `holesPx`).
+public struct WatchMapSurface: Codable, Equatable {
+    public let kind: String
+    public let polygons: [WatchMapSurfacePolygon]
+
+    public init(kind: String, polygons: [WatchMapSurfacePolygon]) {
+        self.kind = kind
+        self.polygons = polygons
+    }
+}
+
+public struct WatchMapSurfacePolygon: Codable, Equatable {
+    public let outerPx: [[Double]]
+    /// Interior rings (an island in a lake, a hole in a fairway) the fill must leave open.
+    public let holesPx: [[[Double]]]?
+
+    public init(outerPx: [[Double]], holesPx: [[[Double]]]? = nil) {
+        self.outerPx = outerPx
+        self.holesPx = holesPx
+    }
 }
 
 public struct WatchCoursePrepGreenDistances: Decodable, Equatable {

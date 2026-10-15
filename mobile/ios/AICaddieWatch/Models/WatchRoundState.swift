@@ -327,6 +327,8 @@ public struct WatchHoleMap: Codable, Equatable {
     public let route: [[Double]]?
     /// Drawing-only CourseView outline used by a vector map before the precise bitmap arrives.
     public let greenOutline: [[Double]]?
+    /// Real surfaces (fairway, bunkers, lakes, …) for the vector map before the bitmap arrives.
+    public let surfaces: [WatchMapSurface]?
 
     public init(
         w: Int,
@@ -337,7 +339,8 @@ public struct WatchHoleMap: Codable, Equatable {
         apex: [Double],
         greenCtrl: [Double],
         route: [[Double]]? = nil,
-        greenOutline: [[Double]]? = nil
+        greenOutline: [[Double]]? = nil,
+        surfaces: [WatchMapSurface]? = nil
     ) {
         self.w = w
         self.h = h
@@ -348,6 +351,7 @@ public struct WatchHoleMap: Codable, Equatable {
         self.greenCtrl = greenCtrl
         self.route = route
         self.greenOutline = greenOutline
+        self.surfaces = surfaces
     }
 }
 
@@ -966,6 +970,20 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
     /// precise prodgeometry map in the same persisted round.
     public func applyingCourseMapUpgrade(_ upgraded: WatchRoundState) -> WatchRoundState {
         guard upgraded.hole == hole else { return self }
+        // A lighter row for the same physical hole and release (the package's route-only seed,
+        // republished at the start of every retry) never replaces a map that is already precise:
+        // the 2026-10-15 cold-start capture showed the drawn hole drop back to "地图准备中" for one
+        // attempt. A different release (new revision) still takes over, as below. Rows without a
+        // course identity cannot prove they are the same hole, so they keep the refresh rule below.
+        if geometryCoverage?.caseInsensitiveCompare("ready") == .orderedSame,
+           let incoming = upgraded.geometryCoverage,
+           incoming.caseInsensitiveCompare("ready") != .orderedSame,
+           upgraded.globalId != nil,
+           upgraded.globalId == globalId,
+           upgraded.sourceLocalHole == sourceLocalHole,
+           upgraded.geometryRevision == nil || upgraded.geometryRevision == geometryRevision {
+            return self
+        }
         // A background refresh is not always monotonic: Garmin may have published a new release,
         // making the formerly precise cache partial until replacement bytes arrive. When the
         // refresh carries coverage, it owns every geometry-derived optional exactly (including

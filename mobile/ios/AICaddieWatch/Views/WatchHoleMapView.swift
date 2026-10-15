@@ -1512,7 +1512,10 @@ public struct WatchHoleMapView: View {
         transform: (CGPoint) -> CGPoint,
         showsHazards: Bool
     ) {
-        if geometry.routePx.count >= 2 {
+        // The hole's real surfaces (#426) come first: with them the map reads like the course, not a
+        // band. Without them the route band stands in for the fairway.
+        let hasFairway = drawLightweightSurfaces(&context, transform: transform)
+        if geometry.routePx.count >= 2, !hasFairway {
             var route = Path()
             route.move(to: transform(geometry.routePx[0]))
             for point in geometry.routePx.dropFirst() {
@@ -1550,10 +1553,46 @@ public struct WatchHoleMapView: View {
         drawLightweightGreen(&context, transform: transform)
     }
 
+    /// Fills the hole's surfaces bottom-up (fairway, fringe, tee, lake, bunker, green), leaving
+    /// interior rings open. Returns whether a fairway was drawn.
+    private func drawLightweightSurfaces(
+        _ context: inout GraphicsContext,
+        transform: (CGPoint) -> CGPoint
+    ) -> Bool {
+        let order = ["fairway", "fringe", "teebox", "lake", "bunker", "green"]
+        func colour(_ kind: String) -> Color {
+            switch kind {
+            case "fairway": return Color(red: 0.25, green: 0.56, blue: 0.27)
+            case "fringe": return Color(red: 0.31, green: 0.63, blue: 0.31)
+            case "teebox": return Color(red: 0.34, green: 0.67, blue: 0.33)
+            case "green": return Color(red: 0.42, green: 0.78, blue: 0.38)
+            case "bunker": return Color(red: 0.89, green: 0.80, blue: 0.56)
+            case "lake": return Color(red: 0.19, green: 0.50, blue: 0.82)
+            default: return Color.white.opacity(0.2)
+            }
+        }
+        var drewFairway = false
+        for kind in order {
+            for surface in geometry.surfaces where surface.kind == kind {
+                var path = Path()
+                for ring in [surface.outer] + surface.holes {
+                    path.move(to: transform(ring[0]))
+                    for point in ring.dropFirst() { path.addLine(to: transform(point)) }
+                    path.closeSubpath()
+                }
+                context.fill(path, with: .color(colour(kind)), style: FillStyle(eoFill: true))
+                if kind == "fairway" { drewFairway = true }
+            }
+        }
+        return drewFairway
+    }
+
     private func drawLightweightGreen(
         _ context: inout GraphicsContext,
         transform: (CGPoint) -> CGPoint
     ) {
+        // A real green surface is already filled; only the legacy outline needs drawing.
+        guard !geometry.surfaces.contains(where: { $0.kind == "green" }) else { return }
         if geometry.greenOutlinePx.count >= 3 {
             var green = Path()
             green.move(to: transform(geometry.greenOutlinePx[0]))
