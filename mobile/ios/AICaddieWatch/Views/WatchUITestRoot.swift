@@ -562,7 +562,11 @@ public struct WatchUITestRoot: View {
     /// The simulated wrist on the tee: the package's tee point, else the route's first point projected
     /// back to GPS (a factual row may carry no tee coordinates).
     private var coldStartFix: WatchLocationFix? {
-        if let fix = realCourseRuntimeFix { return fix }
+        // A live fix (the rangefinder ignores a stale capture time and shows 等待定位).
+        let now = ISO8601DateFormatter().string(from: Date())
+        if let fix = realCourseRuntimeFix {
+            return WatchLocationFix(coordinate: fix.coordinate, horizontalAccuracyM: 5, capturedAt: now)
+        }
         guard let state = model.activeHoleState,
               let start = state.holeMap?.route?.first, start.count >= 2,
               let refs = state.holeImageProjection?.refs,
@@ -573,7 +577,7 @@ public struct WatchUITestRoot: View {
         return WatchLocationFix(
             coordinate: CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude),
             horizontalAccuracyM: 5,
-            capturedAt: "2026-07-31T00:00:00Z"
+            capturedAt: now
         )
     }
 
