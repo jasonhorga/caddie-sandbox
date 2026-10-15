@@ -241,14 +241,18 @@ ops/agenthub_deploy.py rollback <40-lowercase-hex-sha>
    `ai.caddie.source-revision=<sha>`) and, through `ops/build_sync_image.sh`,
    `aicaddie-sync:<sha>`. An existing image with the correct label is reused.
 3. Takes the sync cron's flock, so no sync runs during the switch.
-4. If the current container already runs `<sha>` and is healthy, it skips to
-   step 7. Otherwise it copies the current container's environment (overriding
-   `AI_CADDIE_BUILD_REVISION`, `AI_CADDIE_PRIVATE_ROOT`, `PORT` and
-   `AI_CADDIE_TOPO_RENDER_PROCESSES`) into a 0600 file in a private tmpfs
-   directory, which is deleted right after `docker run`.
+4. If the current container already runs `<sha>`, it only re-checks health
+   and step 7 (idempotent re-run). Otherwise it re-verifies both images and
+   copies the current container's environment, minus entries inherited
+   unchanged from the old image (so the new image's `ENV` defaults apply),
+   overriding `AI_CADDIE_BUILD_REVISION`, `AI_CADDIE_PRIVATE_ROOT`, `PORT` and
+   `AI_CADDIE_TOPO_RENDER_PROCESSES`. The values are written to a 0600 file in
+   a private tmpfs directory immediately before `docker run` and deleted right
+   after it. The switch is refused if less time is left before
+   `AICADDIE_DEPLOY_DEADLINE_SECONDS` than a switch plus a restore can take.
 5. `docker stop --time 30` the current container, then starts
    `<prefix><sha8>` with `--init`, `--restart on-failure:3`, capped json-file
-   logs, the revision label, the same network, CPU/memory limits (defaults
+   logs, `--pull never`, the revision label, the same network, CPU/memory limits (defaults
    when the old container had none), `127.0.0.1:<port>:9000` and the private
    volume. A stopped leftover with that name and revision is replaced.
 6. Waits for local health `status=ok` and `revision=<sha>`.
@@ -257,18 +261,24 @@ ops/agenthub_deploy.py rollback <40-lowercase-hex-sha>
    `AICADDIE_SYNC_CHECK_ONLY=1` (it must log `sync contract ok (check-only)`);
    the public health URL. Each optional check prints `skipped` when it is not
    configured.
-8. Any failure in steps 5–7 removes the new container, restarts the previous
-   one, re-checks its health and returns `1` (or `3`). The post-switch checks
+8. Any failure or SIGTERM/SIGINT/SIGHUP in steps 5–7 removes the new
+   container, restarts the previous one, re-checks its health and returns `1`
+   (or `3`); further signals are ignored until the restore finishes. On the
+   idempotent path a failure stops the live container and restarts the most
+   recently stopped release of another revision instead (`3` if there is
+   none; the live container is then left running). The post-switch checks
    also roll back: a failing sync contract means the cron job would stop
    syncing, and a failing public check means users are not served the new
    revision, even though the restored release can share the same ingress
-   problem.
-9. Releases the lock, keeps the newest `AICADDIE_DEPLOY_KEEP_STOPPED` stopped
+   problem. A failed sync check prints the check-only log lines (names,
+   revisions and the reason only); it uses a private lock, log and alert-state
+   file so it cannot disturb the real cron state.
+9. Still under the lock, keeps the newest `AICADDIE_DEPLOY_KEEP_STOPPED` stopped
    prefix containers, removes older ones with `docker rm -v`, and removes
    their `garmin-ai-caddie-api`/`aicaddie-sync` image tags only when no
    remaining container (of any name) uses the image or its revision and the
    image carries no other repository's tag. A cleanup failure is reported
-   as a warning; the deploy still succeeds.
+   as a warning; the deploy still succeeds. Then the lock is released.
 
 `rollback <sha>` picks the most recently stopped prefix container labelled
 `<sha>`, requires its layout and port to match and `aicaddie-sync:<sha>` to
@@ -276,9 +286,11 @@ exist, takes the sync lock, stops the current container, starts the target
 and waits for health. On failure it stops the target and restarts the previous
 container. It never builds and never removes anything.
 
-A run killed with `SIGKILL` mid-switch cannot restore anything. Re-running
-`deploy <sha>` then verifies the new container (it is already current); if it
-is unhealthy, run `rollback <previous-sha>`.
+A run killed with `SIGKILL` mid-switch cannot restore anything. If the new
+container is running, re-running `deploy <sha>` verifies it (and restores the
+previous release if it fails). If the kill landed between `docker stop` and
+`docker run`, nothing serves and a re-run refuses to guess; run
+`rollback <previous-sha>`, which accepts an empty port.
 
 ### Environment
 
@@ -302,7 +314,8 @@ paths and URLs; it prints container/image names and revisions only.
 | `AICADDIE_DEPLOY_BOOTSTRAP_ENV_FILE` | Absolute path of an env file used only when no current container exists | unset: refuse |
 | `AICADDIE_DEPLOY_HEALTH_TIMEOUT_SECONDS` | Local health wait (new and restored container) | `180` |
 | `AICADDIE_DEPLOY_PUBLIC_HEALTH_TIMEOUT_SECONDS` | Public health wait | `60` |
-| `AICADDIE_DEPLOY_LOCK_TIMEOUT_SECONDS` | Wait for a running sync to release the lock | `900` |
+| `AICADDIE_DEPLOY_LOCK_TIMEOUT_SECONDS` | Wait for a running sync to release the lock | `600` |
+| `AICADDIE_DEPLOY_DEADLINE_SECONDS` | Overall budget; no switch starts unless a switch plus restore still fits (keep below the executor timeout) | `2280` (38 min) |
 | `AICADDIE_DEPLOY_POLL_SECONDS` | Health/lock poll interval | `2` |
 | `XDG_RUNTIME_DIR` | tmpfs directory for the private env file | `/dev/shm` |
 
@@ -339,8 +352,11 @@ every host binding: a different `AICADDIE_API_PORT`, a different
 `AICADDIE_DEPLOY_BOOTSTRAP_ENV_FILE` with fixture-only settings (for example a
 SQLite `AI_CADDIE_DATABASE_URL`, `AI_CADDIE_DATA_MODE=fixture_only`, a
 throwaway admin token) for the first run. Images are keyed by revision and
-are shared with production, which is safe because cleanup never removes an
-image that a remaining container uses.
+are shared with production; cleanup never removes an image that a remaining
+container uses, but do not run a drill concurrently with a production
+deploy. If a drill's cleanup removes images a production deploy has just
+built, the deploy notices under the lock and fails without switching; a
+re-run rebuilds them.
 
 ## GitHub Actions
 

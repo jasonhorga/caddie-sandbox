@@ -154,6 +154,8 @@ def main(argv):
         fmt = (opts.get("--format") or ["{{.ID}}"])[0]
         for c in rows:
             print(render(fmt, {"ID": c["Id"], "Names": c["Name"][1:]}))
+        for ghost in scenario.get("ghost_ids", []):  # removed before `inspect` runs
+            print(ghost)
         return 0
     if command == "inspect":
         opts, refs = take_options(args, set(), {"--format"})
@@ -211,7 +213,7 @@ def main(argv):
         return 0
     if command == "run":
         flags = {"-d", "--init"}
-        valued = {"--name", "--restart", "--cpus", "--memory", "--network", "--log-driver",
+        valued = {"--name", "--pull", "--restart", "--cpus", "--memory", "--network", "--log-driver",
                   "--log-opt", "--label", "--env-file", "-p", "-v", "-e"}
         opts, rest = take_options(args, flags, valued)
         name = opts["--name"][0]
@@ -295,8 +297,8 @@ print(json.dumps({"status": "ok", "revision": revision}))
 '''
 
 FAKE_SYNC = r'''#!/usr/bin/env bash
-printf '%s|%s|%s|%s\n' "$AICADDIE_SYNC_CHECK_ONLY" "$AICADDIE_API_CONTAINER" "$AICADDIE_API_PORT" \
-  "$AICADDIE_SYNC_LOCK" >>"$FAKE_SYNC_RECORD"
+printf '%s|%s|%s|%s|%s\n' "$AICADDIE_SYNC_CHECK_ONLY" "$AICADDIE_API_CONTAINER" "$AICADDIE_API_PORT" \
+  "$AICADDIE_SYNC_LOCK" "$AICADDIE_SYNC_ALERT_STATE" >>"$FAKE_SYNC_RECORD"
 case "${FAKE_SYNC_MODE:-ok}" in
   ok) printf '%s sync contract ok (check-only)\n' "$(date -Is)" >>"$AICADDIE_SYNC_LOG" ;;
   skip) printf '%s skip: another sync holds the lock\n' "$(date -Is)" >>"$AICADDIE_SYNC_LOG" ;;
@@ -305,9 +307,9 @@ esac
 '''
 
 
-def image(serial: int, tags: list[str], revision: str | None) -> dict:
+def image(serial: int, tags: list[str], revision: str | None, env: list[str] | None = None) -> dict:
     labels = {"ai.caddie.source-revision": revision} if revision else {}
-    return {"Id": "sha256:%064x" % serial, "RepoTags": tags, "Config": {"Labels": labels}}
+    return {"Id": "sha256:%064x" % serial, "RepoTags": tags, "Config": {"Labels": labels, "Env": env or []}}
 
 
 def container(serial: int, name: str, image_id: str, revision: str | None, *, running: bool,
@@ -326,8 +328,8 @@ def container(serial: int, name: str, image_id: str, revision: str | None, *, ru
     }
 
 
-OLD_ENV = [
-    "PATH=/app/.venv/bin:/usr/local/bin:/usr/bin:/bin",
+IMAGE_ENV = ["PATH=/usr/local/bin:/usr/bin:/bin", "AI_CADDIE_DATA_MODE=local_or_fixture", "PORT=9000"]
+OLD_ENV = IMAGE_ENV + [
     f"AI_CADDIE_ADMIN_TOKEN={SECRET}",
     f"GEMINI_API_KEY={SECRET_KEY}",
     "AI_CADDIE_BUILD_REVISION=" + OLD,
@@ -340,7 +342,7 @@ def production_fixture() -> dict:
     return {
         "containers": [container(1, PREFIX + "11111111-production-20261014", "sha256:%064x" % 1, OLD,
                                  running=True, env=list(OLD_ENV))],
-        "images": [image(1, [f"garmin-ai-caddie-api:{OLD}"], OLD),
+        "images": [image(1, [f"garmin-ai-caddie-api:{OLD}"], OLD, IMAGE_ENV),
                    image(2, [f"aicaddie-sync:{OLD}"], OLD)],
     }
 
@@ -481,6 +483,7 @@ class AgenthubDeployScriptTest(unittest.TestCase):
         self.assertEqual(run["env_file_mode"], "0o600")
         self.assertTrue(run["env_file_dir"].startswith(str(self.runtime)))
         self.assertEqual(run["--restart"], ["on-failure:3"])
+        self.assertEqual(run["--pull"], ["never"])
         self.assertTrue(run["--init"] and run["-d"])
         self.assertEqual(run["--log-driver"], ["json-file"])
         self.assertEqual(run["--log-opt"], ["max-size=10m", "max-file=3"])
@@ -497,15 +500,20 @@ class AgenthubDeployScriptTest(unittest.TestCase):
         self.assertEqual(env["AI_CADDIE_BUILD_REVISION"], NEW)
         self.assertEqual(env["AI_CADDIE_PRIVATE_ROOT"], "/var/lib/ai-caddie")
         self.assertEqual(env["PORT"], "9000")
+        # Values inherited unchanged from the old image give way to the new image's ENV.
+        self.assertNotIn("PATH", env)
+        self.assertNotIn("AI_CADDIE_DATA_MODE", env)
+        self.assertEqual(env["AI_CADDIE_SECURITY_PROFILE"], "private")
         self.assertEqual(new["Config"]["Image"], f"garmin-ai-caddie-api:{NEW}")
 
         # Post-switch gates: repo gate (check-only), installed sync check, public health.
         self.assertIn("deployment gate (check-only): ok", result.stdout)
         sync_calls = self.sync_record.read_text().splitlines()
         self.assertEqual(len(sync_calls), 1)
-        check_only, api_container, api_port, sync_lock = sync_calls[0].split("|")
+        check_only, api_container, api_port, sync_lock, alert_state = sync_calls[0].split("|")
         self.assertEqual((check_only, api_container, api_port), ("1", new_name, PORT))
         self.assertNotEqual(sync_lock, str(self.lock))
+        self.assertTrue(alert_state.startswith(str(self.runtime)), alert_state)
         self.assertIn(["--fail", "--silent", "--max-time", "5", PUBLIC_URL], state["curl"])
         # The lock is free again.
         with open(self.lock) as handle:
@@ -571,6 +579,9 @@ class AgenthubDeployScriptTest(unittest.TestCase):
                 self.assertIn("restoring the previous container", result.stdout)
                 self.assertIn("previous_restored=true", result.stdout)
                 self.assert_old_serving()
+                if extra_env.get("FAKE_SYNC_MODE") == "fail":
+                    self.assertIn("sync check:", result.stdout)
+                    self.assertIn("SYNC FAILED (mismatch)", result.stdout)
 
     def test_previous_not_recovering_exits_3(self) -> None:
         self.set_scenario(unhealthy=[NEW, OLD])
@@ -658,7 +669,8 @@ class AgenthubDeployScriptTest(unittest.TestCase):
                 self.assertNotIn("stop", self.commands())
 
     def test_unexpected_mount_or_network_fails_closed(self) -> None:
-        for override in ({"volume": "some-other-volume"}, {"network": "bridge"}):
+        for override, reason in (({"volume": "some-other-volume"}, "does not mount exactly"),
+                                 ({"network": "bridge"}, "is not on the configured network")):
             with self.subTest(override=override):
                 fixture = production_fixture()
                 fixture["containers"][0] = container(1, PREFIX + "11111111-production-20261014",
@@ -667,6 +679,8 @@ class AgenthubDeployScriptTest(unittest.TestCase):
                 self.write_state(fixture)
                 result = self.deploy()
                 self.assertEqual(result.returncode, 1)
+                self.assertIn(reason, result.stdout)
+                self.assertNotIn("build", self.commands())
                 self.assertNotIn("stop", self.commands())
 
     def test_stopped_residual_with_target_name_is_replaced(self) -> None:
@@ -754,6 +768,67 @@ class AgenthubDeployScriptTest(unittest.TestCase):
         # Still referenced by the retained rollback container.
         self.assertIn(f"garmin-ai-caddie-api:{OLD}", {t for i in self.state()["images"] for t in i["RepoTags"]})
         self.assertEqual(self.deploy(AICADDIE_DEPLOY_KEEP_STOPPED="0").returncode, 2)
+
+    def test_sigterm_during_restore_does_not_abort_it(self) -> None:
+        self.set_scenario(unhealthy=[NEW, OLD])
+        process = subprocess.Popen(
+            [sys.executable, str(SCRIPT), "deploy", NEW], cwd=ROOT,
+            env=self.env(AICADDIE_DEPLOY_HEALTH_TIMEOUT_SECONDS="3"),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        deadline = time.monotonic() + 60
+        seen_new = False
+        while True:  # wait for the restore phase: new removed, old running again
+            self.assertLess(time.monotonic(), deadline)
+            self.assertIsNone(process.poll())
+            if self.by_name(PREFIX + NEW[:8]) is not None:
+                seen_new = True
+            elif seen_new and self.running_names() == [PREFIX + "11111111-production-20261014"]:
+                break
+            time.sleep(0.05)
+        process.send_signal(signal.SIGTERM)
+        output, _ = process.communicate(timeout=60)
+        self.assertEqual(process.returncode, 3, output)
+        self.assertIn("previous_restored=false", output)
+        self.assertNotIn("previous_untouched", output)
+
+    def test_failed_verification_of_live_revision_restores_previous_release(self) -> None:
+        self.assertEqual(self.deploy().returncode, 0)
+        result = self.deploy(FAKE_SYNC_MODE="fail")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(f"restoring {PREFIX}11111111-production-20261014", result.stdout)
+        self.assertEqual(self.running_names(), [PREFIX + "11111111-production-20261014"])
+        self.assertEqual(self.by_name(PREFIX + NEW[:8])["State"]["Status"], "exited")
+
+    def test_failed_verification_without_previous_release_exits_3(self) -> None:
+        self.write_state({"containers": [], "images": []})
+        env_file = self.tmp / "canary-bootstrap.env"
+        env_file.write_text("AI_CADDIE_DATA_MODE=fixture_only\n")
+        self.assertEqual(self.deploy(AICADDIE_DEPLOY_BOOTSTRAP_ENV_FILE=str(env_file)).returncode, 0)
+        result = self.deploy(FAKE_SYNC_MODE="fail")
+        self.assertEqual(result.returncode, 3, result.stdout)
+        self.assertIn("left running", result.stdout)
+        self.assertEqual(self.running_names(), [PREFIX + NEW[:8]])
+
+    def test_switch_refused_when_deadline_leaves_no_restore_time(self) -> None:
+        result = self.deploy(AICADDIE_DEPLOY_DEADLINE_SECONDS="60")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("AICADDIE_DEPLOY_DEADLINE_SECONDS", result.stdout)
+        self.assertIn("previous_untouched=true", result.stdout)
+        self.assertNotIn("stop", self.commands())
+
+    def test_container_vanishing_between_ps_and_inspect_is_tolerated(self) -> None:
+        self.set_scenario(ghost_ids=["f" * 64])
+        result = self.deploy()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(self.running_names(), [PREFIX + NEW[:8]])
+
+    @unittest.skipUnless(os.path.isdir("/dev/shm"), "needs /dev/shm")
+    def test_env_file_falls_back_to_dev_shm(self) -> None:
+        result = self.deploy(XDG_RUNTIME_DIR=None)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        private = self.by_name(PREFIX + NEW[:8])["Run"]["env_file_dir"]
+        self.assertTrue(private.startswith("/dev/shm/aicaddie-agenthub-deploy-"), private)
+        self.assertFalse(os.path.exists(private))
 
     # -- rollback -------------------------------------------------------------
 

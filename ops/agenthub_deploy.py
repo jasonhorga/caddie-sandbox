@@ -49,6 +49,9 @@ PRIVATE_ROOT = "/var/lib/ai-caddie"
 CONTAINER_PORT = "9000"
 STOP_TIMEOUT_SECONDS = "30"
 SYNC_CHECK_MARKER = "sync contract ok (check-only)"
+# Stop timeout plus gate/sync check time, on top of the health waits.
+SWITCH_OVERHEAD_SECONDS = 90.0
+SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -123,12 +126,28 @@ class Config:
         self.default_memory = _int(env, "AICADDIE_DEPLOY_DEFAULT_MEMORY_BYTES", 3 * 1024**3, minimum=1)
         self.health_timeout = _float(env, "AICADDIE_DEPLOY_HEALTH_TIMEOUT_SECONDS", 180.0)
         self.public_timeout = _float(env, "AICADDIE_DEPLOY_PUBLIC_HEALTH_TIMEOUT_SECONDS", 60.0)
-        self.lock_timeout = _float(env, "AICADDIE_DEPLOY_LOCK_TIMEOUT_SECONDS", 900.0)
+        self.lock_timeout = _float(env, "AICADDIE_DEPLOY_LOCK_TIMEOUT_SECONDS", 600.0)
+        self.deadline_seconds = _float(env, "AICADDIE_DEPLOY_DEADLINE_SECONDS", 2280.0)
         self.poll = _float(env, "AICADDIE_DEPLOY_POLL_SECONDS", 2.0)
+        self.started = time.monotonic()
 
     @property
     def local_health_url(self) -> str:
         return f"http://127.0.0.1:{self.port}/api/v2/health"
+
+    @property
+    def switch_reserve(self) -> float:
+        """Worst case for switching, checking and restoring the previous container."""
+        return 2 * self.health_timeout + self.public_timeout + SWITCH_OVERHEAD_SECONDS
+
+    def switch_deadline(self) -> float:
+        """Latest monotonic time at which a switch may still start."""
+        return self.started + self.deadline_seconds - self.switch_reserve
+
+    def require_time_for_switch(self) -> None:
+        if time.monotonic() > self.switch_deadline():
+            raise DeployError("not enough time left before AICADDIE_DEPLOY_DEADLINE_SECONDS "
+                              "to switch and still restore the previous container")
 
 
 def _int(env, name, default, *, minimum, maximum=None):
@@ -218,16 +237,28 @@ class Container:
 
 
 def list_containers() -> list[Container]:
-    ids = docker("ps", "-a", "--no-trunc", "--format", "{{.ID}}", capture=True).stdout.split()
-    if not ids:
-        return []
-    output = docker("inspect", "--format", CONTAINER_FORMAT, *ids, capture=True).stdout
-    return [Container(json.loads(line)) for line in output.splitlines() if line.strip()]
+    # Other projects' `--rm` containers can vanish between `ps` and `inspect`;
+    # docker still prints the ones that exist, so a partial answer is kept.
+    for _ in range(3):
+        ids = docker("ps", "-a", "--no-trunc", "--format", "{{.ID}}", capture=True).stdout.split()
+        if not ids:
+            return []
+        result = docker("inspect", "--format", CONTAINER_FORMAT, *ids,
+                        capture=True, quiet=True, check=False)
+        containers = [Container(json.loads(line)) for line in result.stdout.splitlines() if line.strip()]
+        if result.returncode == 0 or containers:
+            return containers
+    raise DeployError(f"docker inspect failed (exit {result.returncode})")
 
 
-def container_env(name: str) -> list[str]:
-    output = docker("inspect", "--format", ENV_FORMAT, name, capture=True).stdout
-    return json.loads(output) or []
+def container_env(container: Container) -> list[str]:
+    """The container's Env minus entries inherited unchanged from its image,
+    so the new image's own ENV defaults take effect."""
+    entries = json.loads(docker("inspect", "--format", ENV_FORMAT, container.name, capture=True).stdout) or []
+    result = docker("image", "inspect", "--format", ENV_FORMAT, container.image_id,
+                    capture=True, quiet=True, check=False)
+    image_defaults = set(json.loads(result.stdout) or []) if result.returncode == 0 else set()
+    return [entry for entry in entries if entry not in image_defaults]
 
 
 def image_info(reference: str) -> dict | None:
@@ -281,7 +312,7 @@ class SyncLock:
 
     def __enter__(self):
         self.handle = open(self.cfg.lock_path, "a")
-        deadline = time.monotonic() + self.cfg.lock_timeout
+        deadline = min(time.monotonic() + self.cfg.lock_timeout, self.cfg.switch_deadline())
         while True:
             try:
                 fcntl.flock(self.handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -317,14 +348,19 @@ class PrivateDir:
         return False
 
 
+def shield_signals() -> None:
+    """Ignore further signals: a restore, or the tail of a successful switch,
+    must not be cut short and reported as untouched."""
+    for sig in SIGNALS:
+        signal.signal(sig, signal.SIG_IGN)
+
+
 def install_signal_handlers() -> None:
     def handler(signum, _frame):
-        # Ignore repeats so a restore in progress is not cut short.
-        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-            signal.signal(sig, signal.SIG_IGN)
+        shield_signals()
         raise Interrupted(f"interrupted by signal {signum}")
 
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    for sig in SIGNALS:
         signal.signal(sig, handler)
 
 
@@ -350,6 +386,21 @@ def assert_layout(cfg: Config, container: Container) -> None:
         raise DeployError(f"{container.name} does not mount exactly the configured private volume read-write at {PRIVATE_ROOT}")
     if container.network != cfg.network:
         raise DeployError(f"{container.name} is not on the configured network")
+
+
+def previous_release(cfg: Config, containers: list[Container], sha: str) -> Container | None:
+    """The most recently stopped release of another revision that could serve again."""
+    candidates = sorted((c for c in containers if c.name.startswith(cfg.prefix) and not c.running
+                         and c.revision != sha and SHA_PATTERN.fullmatch(c.revision)
+                         and c.publishes(cfg.port)),
+                        key=lambda c: c.finished_key, reverse=True)
+    for candidate in candidates:
+        try:
+            assert_layout(cfg, candidate)
+        except DeployError:
+            continue
+        return candidate
+    return None
 
 
 def restore_previous(cfg: Config, previous: Container | None) -> bool | None:
@@ -410,7 +461,7 @@ def read_env_file(path: str) -> list[str]:
     return entries
 
 
-def write_env_file(directory: Path, entries: list[str], sha: str) -> Path:
+def prepare_env(entries: list[str], sha: str) -> dict[str, str]:
     values: dict[str, str] = {}
     for entry in entries:
         if "=" not in entry:
@@ -418,20 +469,26 @@ def write_env_file(directory: Path, entries: list[str], sha: str) -> Path:
         key, value = entry.split("=", 1)
         values[key] = value
     values.update(FIXED_ENV, AI_CADDIE_BUILD_REVISION=sha)
+    for key, value in values.items():
+        if not key or any(ch in key for ch in "= \t\r\n") or "\n" in value or "\r" in value:
+            raise DeployError("an environment entry cannot be represented in an env file")
+    return values
+
+
+def write_env_file(directory: Path, values: dict[str, str]) -> Path:
     path = directory / "api.env"
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w") as handle:
-        for key, value in values.items():
-            if not key or any(ch in key for ch in "= \t\r\n") or "\n" in value or "\r" in value:
-                raise DeployError("an environment entry cannot be represented in an env file")
-            handle.write(f"{key}={value}\n")
+        handle.writelines(f"{key}={value}\n" for key, value in values.items())
     return path
 
 
-def run_api_container(cfg: Config, name: str, sha: str, env_file: Path,
-                      cpus: float, memory: int) -> None:
+def run_api_container(cfg: Config, private: Path, name: str, sha: str,
+                      values: dict[str, str], cpus: float, memory: int) -> None:
+    # Written only now, so the credentials file never outlives this call.
+    env_file = write_env_file(private, values)
     try:
-        docker("run", "-d", "--init", "--name", name,
+        docker("run", "-d", "--init", "--pull", "never", "--name", name,
                "--restart", "on-failure:3",
                "--cpus", str(cpus), "--memory", str(memory),
                "--network", cfg.network,
@@ -455,16 +512,22 @@ def post_checks(cfg: Config, container: str, sha: str, private: Path) -> None:
     if cfg.sync_script:
         # A private lock/log: this process already holds the real sync lock,
         # and a busy lock would make the sync script skip with exit 0.
+        # Its alert state is private too, so a deploy-time failure cannot make
+        # the next real sync send a "recovered" alert.
         sync_log = private / "sync-check.log"
-        run(["bash", cfg.sync_script], label="sync contract (check-only)",
-            env=child_env(AICADDIE_SYNC_CHECK_ONLY="1",
-                          AICADDIE_API_CONTAINER=container,
-                          AICADDIE_API_PORT=str(cfg.port),
-                          AICADDIE_SYNC_LOCK=str(private / "sync-check.lock"),
-                          AICADDIE_SYNC_LOG=str(sync_log)))
+        result = run(["bash", cfg.sync_script], label="sync contract (check-only)", check=False,
+                     env=child_env(AICADDIE_SYNC_CHECK_ONLY="1",
+                                   AICADDIE_API_CONTAINER=container,
+                                   AICADDIE_API_PORT=str(cfg.port),
+                                   AICADDIE_SYNC_LOCK=str(private / "sync-check.lock"),
+                                   AICADDIE_SYNC_LOG=str(sync_log),
+                                   AICADDIE_SYNC_ALERT_STATE=str(private / "sync-alert.state")))
         lines = sync_log.read_text().splitlines() if sync_log.exists() else []
-        if not any(line.endswith(SYNC_CHECK_MARKER) for line in lines):
-            raise DeployError("sync contract (check-only) did not report success")
+        if result.returncode != 0 or not any(line.endswith(SYNC_CHECK_MARKER) for line in lines):
+            # The check-only log holds only timestamps, names, revisions and reasons.
+            for line in lines[-20:]:
+                log(f"sync check: {line}")
+            raise DeployError(f"sync contract (check-only) failed (exit {result.returncode})")
         log("sync contract (check-only): ok")
     else:
         log("sync contract (check-only): skipped (AICADDIE_SYNC_SCRIPT not configured)")
@@ -495,59 +558,90 @@ def deploy(cfg: Config, sha: str) -> str:
     with PrivateDir() as private, SyncLock(cfg):
         containers = list_containers()
         current = find_current(cfg, containers)
-
         if current is not None and current.revision == sha:
-            log(f"{current.name} already runs revision {sha}; verifying only")
-            if not wait_health(cfg.local_health_url, sha, cfg.health_timeout, cfg.poll):
-                raise DeployError(f"{current.name} runs revision {sha} but its health check fails")
-            post_checks(cfg, current.name, sha, private)
+            verify_live(cfg, sha, current, containers, private)
             deployed = current.name
         else:
-            check_deploy_source(cfg, current)
-            if current is None:
-                log("no current container; bootstrap deploy from the configured env file")
-                entries = read_env_file(cfg.bootstrap_env_file)
-                cpus, memory = cfg.default_cpus, cfg.default_memory
-            else:
-                entries = container_env(current.name)
-                cpus = current.nano_cpus / 1e9 if current.nano_cpus else cfg.default_cpus
-                memory = current.memory or cfg.default_memory
-
-            residual = next((c for c in containers if c.name == new_name), None)
-            if residual is not None:
-                if residual.running or residual.revision != sha:
-                    raise DeployError(f"{new_name} already exists and is not a stopped revision-{sha[:8]} container")
-                log(f"removing stopped residual {new_name}")
-                docker("rm", "-v", new_name, capture=True)
-
-            env_file = write_env_file(private, entries, sha)
-            try:
-                if current is not None:
-                    log(f"stopping {current.name}")
-                    docker("stop", "--time", STOP_TIMEOUT_SECONDS, current.name, capture=True)
-                log(f"starting {new_name}")
-                run_api_container(cfg, new_name, sha, env_file, cpus, memory)
-                if not wait_health(cfg.local_health_url, sha, cfg.health_timeout, cfg.poll):
-                    raise DeployError(f"{new_name} did not report status=ok revision={sha}")
-                log(f"{new_name} healthy")
-                post_checks(cfg, new_name, sha, private)
-            except BaseException as exc:
-                reason = str(exc) if isinstance(exc, DeployError) else f"unexpected {type(exc).__name__}"
-                log(f"error: {reason}; restoring the previous container")
-                env_file.unlink(missing_ok=True)
-                removed = docker("rm", "-f", "-v", new_name, capture=True, quiet=True, check=False)
-                if removed.returncode == 0:
-                    log(f"removed {new_name}")
-                restored = restore_previous(cfg, current)
-                raise CutoverFailed(reason, restored) from None
+            switch(cfg, sha, new_name, current, containers, private)
             deployed = new_name
-
-    try:
-        cleanup(cfg)
-    except Exception as exc:  # the new release is live; cleanup is best effort
-        reason = str(exc) if isinstance(exc, DeployError) else type(exc).__name__
-        log(f"warning: cleanup incomplete: {reason}")
+        try:
+            cleanup(cfg)
+        except Exception as exc:  # the new release is live; cleanup is best effort
+            reason = str(exc) if isinstance(exc, DeployError) else type(exc).__name__
+            log(f"warning: cleanup incomplete: {reason}")
     return deployed
+
+
+def verify_live(cfg: Config, sha: str, current: Container, containers: list[Container],
+                private: Path) -> None:
+    """Idempotent re-run: the revision already serves, so only re-check it."""
+    log(f"{current.name} already runs revision {sha}; verifying only")
+    try:
+        if not wait_health(cfg.local_health_url, sha, cfg.health_timeout, cfg.poll):
+            raise DeployError(f"{current.name} runs revision {sha} but its health check fails")
+        post_checks(cfg, current.name, sha, private)
+    except BaseException as exc:
+        shield_signals()
+        reason = str(exc) if isinstance(exc, DeployError) else f"unexpected {type(exc).__name__}"
+        previous = previous_release(cfg, containers, sha)
+        if previous is None:
+            log(f"error: {reason}; no stopped previous release to restore, {current.name} left running")
+            raise CutoverFailed(reason, False) from None
+        log(f"error: {reason}; restoring {previous.name}")
+        docker("stop", "--time", STOP_TIMEOUT_SECONDS, current.name, capture=True, check=False)
+        restored = restore_previous(cfg, previous)
+        if not restored:
+            docker("stop", "--time", STOP_TIMEOUT_SECONDS, previous.name, capture=True, check=False)
+            docker("start", current.name, capture=True, check=False)
+        raise CutoverFailed(reason, restored) from None
+    shield_signals()
+
+
+def switch(cfg: Config, sha: str, new_name: str, current: Container | None,
+           containers: list[Container], private: Path) -> None:
+    check_deploy_source(cfg, current)
+    # A concurrent cleanup (for example a drill with its own lock) could have
+    # removed the images since they were built.
+    for image in (f"{API_REPOSITORY}:{sha}", f"{SYNC_REPOSITORY}:{sha}"):
+        if image_revision(image) != sha:
+            raise DeployError(f"{image} disappeared before the switch; re-run to rebuild it")
+    if current is None:
+        log("no current container; bootstrap deploy from the configured env file")
+        values = prepare_env(read_env_file(cfg.bootstrap_env_file), sha)
+        cpus, memory = cfg.default_cpus, cfg.default_memory
+    else:
+        values = prepare_env(container_env(current), sha)
+        cpus = current.nano_cpus / 1e9 if current.nano_cpus else cfg.default_cpus
+        memory = current.memory or cfg.default_memory
+
+    residual = next((c for c in containers if c.name == new_name), None)
+    if residual is not None:
+        if residual.running or residual.revision != sha:
+            raise DeployError(f"{new_name} already exists and is not a stopped revision-{sha[:8]} container")
+        log(f"removing stopped residual {new_name}")
+        docker("rm", "-v", new_name, capture=True)
+
+    cfg.require_time_for_switch()
+    try:
+        if current is not None:
+            log(f"stopping {current.name}")
+            docker("stop", "--time", STOP_TIMEOUT_SECONDS, current.name, capture=True)
+        log(f"starting {new_name}")
+        run_api_container(cfg, private, new_name, sha, values, cpus, memory)
+        if not wait_health(cfg.local_health_url, sha, cfg.health_timeout, cfg.poll):
+            raise DeployError(f"{new_name} did not report status=ok revision={sha}")
+        log(f"{new_name} healthy")
+        post_checks(cfg, new_name, sha, private)
+    except BaseException as exc:
+        shield_signals()
+        reason = str(exc) if isinstance(exc, DeployError) else f"unexpected {type(exc).__name__}"
+        log(f"error: {reason}; restoring the previous container")
+        removed = docker("rm", "-f", "-v", new_name, capture=True, quiet=True, check=False)
+        if removed.returncode == 0:
+            log(f"removed {new_name}")
+        restored = restore_previous(cfg, current)
+        raise CutoverFailed(reason, restored) from None
+    shield_signals()
 
 
 def cleanup(cfg: Config) -> None:
@@ -619,6 +713,7 @@ def rollback(cfg: Config, sha: str) -> str:
             log(f"{current.name} already runs revision {sha}")
             return current.name
 
+        cfg.require_time_for_switch()
         try:
             if current is not None:
                 log(f"stopping {current.name}")
@@ -628,11 +723,13 @@ def rollback(cfg: Config, sha: str) -> str:
             if not wait_health(cfg.local_health_url, sha, cfg.health_timeout, cfg.poll):
                 raise DeployError(f"{target.name} did not report status=ok revision={sha}")
         except BaseException as exc:
+            shield_signals()
             reason = str(exc) if isinstance(exc, DeployError) else f"unexpected {type(exc).__name__}"
             log(f"error: {reason}; restoring the previous container")
             docker("stop", "--time", STOP_TIMEOUT_SECONDS, target.name, capture=True, quiet=True, check=False)
             restored = restore_previous(cfg, current)
             raise CutoverFailed(reason, restored) from None
+        shield_signals()
         return target.name
 
 
