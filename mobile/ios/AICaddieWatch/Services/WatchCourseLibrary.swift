@@ -50,9 +50,11 @@ public final class WatchCourseLibrary: ObservableObject {
     /// The active round's precise-map upgrade gave up its retries; the app restarts it when it comes
     /// back to the front.
     public private(set) var preciseUpgradePaused = false
-    /// The install journal refused this player (403): no progress hints, so the status-only phase
-    /// fetches the package every `preciseUpgradeBlindFetchEvery` attempts instead of every minute.
-    private(set) var installStatusForbidden = false
+    /// Status keys (course, tee, loops, server, credential) whose install journal refused this player
+    /// (403): no progress hints, so their status-only phase fetches the package every
+    /// `preciseUpgradeBlindFetchEvery` attempts instead of every minute. Keyed, not library-wide, so
+    /// another course or a refreshed credential asks again (#425 review).
+    private var installStatusForbiddenKeys = Set<String>()
     static let preciseUpgradeBlindFetchEvery = 3
 
     private let store: WatchCourseStore
@@ -590,7 +592,7 @@ public final class WatchCourseLibrary: ObservableObject {
             if status == nil {
                 // Without a progress hint: every attempt while it may be the journal's absence, but
                 // only every few minutes when the journal refused us (a full fetch is not free).
-                fetchPackage = !installStatusForbidden
+                fetchPackage = !installStatusForbidden(selection: selection, config: config)
                     || attempt + 1 < Self.preciseUpgradeFullFetchAttempts
                     || (attempt + 1) % Self.preciseUpgradeBlindFetchEvery == 0
             }
@@ -1675,11 +1677,30 @@ public final class WatchCourseLibrary: ObservableObject {
         )
     }
 
+    func installStatusForbidden(selection: WatchCourseSelection, config: WatchRoundConfig) -> Bool {
+        installStatusForbiddenKeys.contains(Self.installStatusKey(selection: selection, config: config))
+    }
+
+    private static func installStatusKey(selection: WatchCourseSelection, config: WatchRoundConfig) -> String {
+        // The credential enters only as a hash: the key lives in memory, but never holds a token.
+        var credential = Hasher()
+        credential.combine(config.sessionToken)
+        credential.combine(config.adminToken)
+        return [
+            String(selection.front.globalId),
+            selection.teeBox,
+            selection.loopsQuery,
+            config.baseURL.absoluteString,
+            String(credential.finalize()),
+        ].joined(separator: "|")
+    }
+
     func fetchInstallStatus(
         selection: WatchCourseSelection,
         config: WatchRoundConfig
     ) async -> WatchCourseInstallStatus? {
-        guard !Task.isCancelled, !installStatusForbidden else { return nil }
+        let key = Self.installStatusKey(selection: selection, config: config)
+        guard !Task.isCancelled, !installStatusForbiddenKeys.contains(key) else { return nil }
         do {
             return try await makeClient(config).fetchCourseInstallStatus(
                 globalId: selection.front.globalId,
@@ -1687,8 +1708,9 @@ public final class WatchCourseLibrary: ObservableObject {
                 loops: selection.loopsQuery
             )
         } catch WatchBackendClientError.http(status: 403, body: _) {
-            // A player token may not read the install journal (#425 review): stop asking this launch.
-            installStatusForbidden = true
+            // A player token may not read the install journal (#425 review): stop asking for this
+            // course and credential this launch.
+            installStatusForbiddenKeys.insert(key)
             return nil
         } catch {
             // The endpoint is additive and older deployments may not have it. The local Watch

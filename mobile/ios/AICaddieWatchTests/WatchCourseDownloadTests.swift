@@ -536,6 +536,17 @@ final class WatchCourseDownloadTests: XCTestCase {
         XCTAssertEqual(precise.applyingCourseMapUpgrade(row("partial", "rev-b", club: nil)).geometryRevision, "rev-b")
         // And a ready row always applies.
         XCTAssertEqual(row("partial", nil, club: nil).applyingCourseMapUpgrade(precise).geometryCoverage, "ready")
+        // Rows without a course identity cannot prove they are the same hole: the refresh applies.
+        let anonymous = WatchRoundState(
+            roundId: "r", hole: 1, par: 4, distanceM: 350, selectedClub: nil,
+            geometryCoverage: "ready",
+            score: 0, putts: 0, penaltyCount: 0, caddieConfidence: "offline"
+        )
+        XCTAssertEqual(anonymous.applyingCourseMapUpgrade(WatchRoundState(
+            roundId: "r", hole: 1, par: 4, distanceM: nil, selectedClub: nil,
+            geometryCoverage: "partial",
+            score: 0, putts: 0, penaltyCount: 0, caddieConfidence: "offline"
+        )).geometryCoverage, "partial")
     }
 
     func testBuildPrefersSharedTopoBitmapOverLegacyPrepJPEG() throws {

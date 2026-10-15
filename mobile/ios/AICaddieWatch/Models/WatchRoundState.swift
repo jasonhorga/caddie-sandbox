@@ -973,10 +973,12 @@ public struct WatchRoundState: Codable, Equatable, Identifiable {
         // A lighter row for the same physical hole and release (the package's route-only seed,
         // republished at the start of every retry) never replaces a map that is already precise:
         // the 2026-10-15 cold-start capture showed the drawn hole drop back to "地图准备中" for one
-        // attempt. A different release (new revision) still takes over, as below.
+        // attempt. A different release (new revision) still takes over, as below. Rows without a
+        // course identity cannot prove they are the same hole, so they keep the refresh rule below.
         if geometryCoverage?.caseInsensitiveCompare("ready") == .orderedSame,
            let incoming = upgraded.geometryCoverage,
            incoming.caseInsensitiveCompare("ready") != .orderedSame,
+           upgraded.globalId != nil,
            upgraded.globalId == globalId,
            upgraded.sourceLocalHole == sourceLocalHole,
            upgraded.geometryRevision == nil || upgraded.geometryRevision == geometryRevision {
