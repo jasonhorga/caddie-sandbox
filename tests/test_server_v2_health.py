@@ -53,6 +53,7 @@ class ServerV2HealthTests(unittest.TestCase):
                 "status": "ok",
                 "service": "server_v2",
                 "revision": "0123456789abcdef",
+                "build": {"revision": "0123456789abcdef", "short": "0123456789ab"},
             },
         )
 

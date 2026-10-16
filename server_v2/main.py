@@ -573,12 +573,14 @@ def service_index() -> dict[str, object]:
 
 
 @app.get("/api/v2/health")
-def health() -> dict[str, str]:
+def health() -> dict[str, object]:
+    revision = os.getenv("AI_CADDIE_BUILD_REVISION", "unknown").strip() or "unknown"
     return {
         "schema": "ai-caddie-health-v2",
         "status": "ok",
         "service": "server_v2",
-        "revision": os.getenv("AI_CADDIE_BUILD_REVISION", "unknown").strip() or "unknown",
+        "revision": revision,
+        "build": {"revision": revision, "short": revision[:12]},
     }
 
 

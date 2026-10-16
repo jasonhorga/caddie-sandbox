@@ -750,7 +750,13 @@ def _package(round_id: str, global_id: int | None, loops: list[tuple[int, str]] 
 
 @ROUTE.get("/api/v2/health")
 def health() -> dict:
-    return _with_markers({"schema": "ai-caddie-health-v2", "status": "ok", "service": "server_v2", "revision": FIXTURE_REVISION})
+    return _with_markers({
+        "schema": "ai-caddie-health-v2",
+        "status": "ok",
+        "service": "server_v2",
+        "revision": FIXTURE_REVISION,
+        "build": {"revision": FIXTURE_REVISION, "short": FIXTURE_REVISION[:12]},
+    })
 
 
 @ROUTE.get("/api/v2/readiness")
