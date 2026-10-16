@@ -1,5 +1,9 @@
 # Card #1 contract — health: read-only `build` object
 
+> Card #3 (`.agent/contracts/card-3.md`) replaces the `build` shape: `build` is now
+> `{"revision": R[:12]}` and `build.short` is removed. `tests/acceptance/test_card1_health_build.py`
+> follows card #3. The rest of this document is history.
+
 Acceptance tests: `tests/acceptance/test_card1_health_build.py` (package marker `tests/acceptance/__init__.py`).
 Touches: `server_v2/main.py`, `server_v2/ci_fixture.py`, `tests/`, `docs/operations/PROJECT_STATE.md`, `docs/archive/PROJECT_STATE-*.md`
 

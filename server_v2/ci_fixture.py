@@ -755,7 +755,7 @@ def health() -> dict:
         "status": "ok",
         "service": "server_v2",
         "revision": FIXTURE_REVISION,
-        "build": {"revision": FIXTURE_REVISION, "short": FIXTURE_REVISION[:12]},
+        "build": {"revision": FIXTURE_REVISION[:12]},
     })
 
 
