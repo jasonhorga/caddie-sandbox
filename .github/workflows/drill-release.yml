@@ -1,0 +1,53 @@
+name: Drill release (echo only)
+
+# agenthub D1 drill stand-in for ios-testflight.yml: same inputs, no secrets,
+# no Apple, no network. It only echoes what it was dispatched with.
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'TestFlight changelog'
+        required: false
+        default: 'Automated CI build'
+      api_base_url:
+        description: 'Optional public API base URL to bake into the TestFlight app'
+        required: false
+        default: ''
+      upload_to_testflight:
+        description: 'Upload the signed IPA to TestFlight (false builds an artifact only)'
+        type: boolean
+        required: true
+        default: false
+      test_environment_upload:
+        description: 'Owner-approved test-environment upload; permits degraded operational readiness only'
+        type: boolean
+        required: true
+        default: false
+      expected_backend_revision:
+        description: 'Expected deployed backend Git revision (40 hex characters)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Echo inputs
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          API_BASE_URL: ${{ inputs.api_base_url }}
+          UPLOAD_TO_TESTFLIGHT: ${{ inputs.upload_to_testflight }}
+          TEST_ENVIRONMENT_UPLOAD: ${{ inputs.test_environment_upload }}
+          EXPECTED_BACKEND_REVISION: ${{ inputs.expected_backend_revision }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          printf 'run_sha=%s\n' "$RUN_SHA"
+          printf 'expected_backend_revision=%s\n' "$EXPECTED_BACKEND_REVISION"
+          printf 'upload_to_testflight=%s\n' "$UPLOAD_TO_TESTFLIGHT"
+          printf 'test_environment_upload=%s\n' "$TEST_ENVIRONMENT_UPLOAD"
+          printf 'api_base_url=%s\n' "$API_BASE_URL"
+          printf 'release_notes_length=%s\n' "${#RELEASE_NOTES}"

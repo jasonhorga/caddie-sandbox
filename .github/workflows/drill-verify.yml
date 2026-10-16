@@ -1,0 +1,41 @@
+name: Drill verify (echo only)
+
+# agenthub D1 drill stand-in for ios-testflight-testers.yml operation=list.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Manage testers or diagnose an uploaded IPA'
+        required: true
+        default: 'list'
+        type: choice
+        options:
+          - list
+      external_distribution:
+        description: 'Opt in to external tester, review, and distribution operations'
+        required: false
+        default: false
+        type: boolean
+      diagnose_bundles:
+        description: 'Print Apple-processed build bundle metadata for list'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Echo inputs
+        env:
+          OPERATION: ${{ inputs.operation }}
+          EXTERNAL_DISTRIBUTION: ${{ inputs.external_distribution }}
+          DIAGNOSE_BUNDLES: ${{ inputs.diagnose_bundles }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          printf 'run_sha=%s\noperation=%s\nexternal_distribution=%s\ndiagnose_bundles=%s\n' \
+            "$RUN_SHA" "$OPERATION" "$EXTERNAL_DISTRIBUTION" "$DIAGNOSE_BUNDLES"
