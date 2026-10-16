@@ -580,7 +580,7 @@ def health() -> dict[str, object]:
         "status": "ok",
         "service": "server_v2",
         "revision": revision,
-        "build": {"revision": revision, "short": revision[:12]},
+        "build": {"revision": revision[:12]},
     }
 
 

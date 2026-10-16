@@ -3,70 +3,63 @@
 > Short durable continuity ledger. Only this file is authoritative.
 > Completed/history is preserved in dated `docs/archive/` files.
 
-**Updated:** 2026-10-16; expanded card #1 contract integrated and checked
-**Canonical baseline:** sandbox main `3ed25a98`
-**Current slice:** `CARD-1-HEALTH-BUILD` — `evidence-open`
+**Updated:** 2026-10-16 04:53 UTC; card #3 implemented and checked locally
+**Canonical baseline:** main `f6ec7091d22cdf9d99687440be4d90d4904dc90d` (PR #2)
+**Current slice:** `CARD-3-SHORT-HEALTH-REVISION` — `evidence-open`
 
 ## Current state and unfinished work
 
-- `CARD-1-HEALTH-BUILD` — `evidence-open`: real and CI-fixture health expose
-  `build.revision` and `build.short`, preserving existing fields, fixture
-  markers, and the stripped/unknown revision rule. Return typing accepts
-  the nested object. Runtime implementation remains unchanged from `8a4bdab8`.
-- Latest contract: `.agent/contracts/card-1.md`, Claude commit `a6205ec5`,
-  integrated by fast-forward from `agenthub/contract-2a240647cb4f`.
-  Event: `contract:worker_done:2a240647cb4f:card:1` (successful).
-- The expanded contract adds acceptance checks for request-time environment
-  changes, spoofed query/header inputs, GET-only behavior, 12/13-character
-  boundaries, fallback transitions, and unchanged fixture readiness.
-  Existing implementation satisfies all checks without runtime changes.
-- Claude approved original head `8a4bdab8`, reporting green backend, frontend,
-  and Docker CI. A gated merge was requested for that head and remains armed;
-  no merge outcome has arrived. The expanded contract creates a new head that
-  needs publication and applicable gates; do not repeat merge/review requests
-  for the old head.
-- Initial publication was rejected for host paths. The implementation commit
-  was rewritten with portable filesystem role labels; the PR then opened.
-- Previous production, startup, and initial publication state is preserved in
-  `docs/archive/PROJECT_STATE-2026-10-16-pre-card-1.md` with the explicitly
-  disclosed host-root redactions required for public publication.
+- `CARD-3-SHORT-HEALTH-REVISION` — `evidence-open`: both real and CI-fixture
+  health now expose only `build.revision`, using the first 12 characters of
+  the full top-level revision. `build.short` is removed. Top-level fields,
+  per-request trimming/fallback behavior and fixture markers are unchanged.
+- Contract: `.agent/contracts/card-3.md`, Claude commit `5ab0fff7`;
+  event `contract:worker_done:9e4257ea6c6c:card:3` (successful).
+  Supplied card #3 acceptance tests and updated card #1 tests are integrated.
+  The existing exact-payload unit test follows the new shape.
+- Implementation is complete; ordinary required CI and review remain needed.
+  Runtime diffs are exactly one health build value in each handler; readiness,
+  other routes, deploy scripts, manifests and dependencies are unchanged.
+- Card #1's completed release verification and card #3 startup state are
+  preserved verbatim in `docs/archive/PROJECT_STATE-2026-10-16-pre-card-3.md`.
+  The prior local verification receipt and archive are carried forward.
 
 ## Live verification baselines
 
+- Production remains at card #1 release `f6ec7091`, previously verified via
+  live HTTP with its full `build.revision` and separate `build.short`.
+  Its disposable player was deleted and cleanup verified. Card #3 is not
+  deployed or release-verified by this dev-tier event.
 - Shared read-only Python: `<shared-environments>/caddie-drill-py312`.
   No dependency installation; tool network is disabled.
-- Expanded acceptance tests (9) plus existing health tests (2): 11/11 passed
-  in 44.803 s using `python -m unittest
+- Focused command: `python -m unittest
+  tests.acceptance.test_card3_health_short_build_revision
   tests.acceptance.test_card1_health_build tests.test_server_v2_health -v`.
-- Sandbox TestClient thread notifications require the previously diagnosed
-  temporary external `sitecustomize.py` timer workaround: wrap
-  `asyncio.DefaultEventLoopPolicy.new_event_loop` with a recurring
-  `loop.call_later(0.01, pulse)`. Both runs used this workaround, with no
-  repository runtime or test modifications to accommodate the sandbox.
-- Latest full `python -m unittest discover -s tests -v`: 2373 tests in
-  179.467 s, 10 failures, 2 errors, 46 skipped. Failures cite missing `awk`
-  in the cleanup harness; native evidence rejects the sandbox temporary path;
-  topo forkserver binding is denied. Same limitations as the previous run.
-  All six implicated files remain byte-identical to main; the deployment
-  harness's 33 tests skip because awk is absent.
-- Health, catalogue preflight, auth-policy, admin-protection, and backend
-  hardening tests pass. Compilation, canonical authority and diff checks pass.
-- Ordinary CI is still required for the expanded contract head. No release
-  or post-release verification is claimed.
+  All 19 tests passed in 133.519 s, including card #3's nested run of the
+  existing unit/card #1 acceptance suites.
+- Full `python -m unittest discover -s tests -v`: 2381 tests in 272.517 s,
+  10 failures, 2 errors, 46 skipped. Failures cite missing `awk` in the
+  branch-cleanup harness. Native evidence rejects the sandbox temporary path;
+  topo forkserver socket binding is denied. These are the same limitations
+  as before; all six implicated files are byte-identical to origin/main.
+  The 33 deployment-harness tests skip because awk is absent.
+- Both runs used the previously diagnosed temporary external timer shim:
+  wrap `asyncio.DefaultEventLoopPolicy.new_event_loop` with a recurring
+  `loop.call_later(0.01, pulse)`. No repository runtime/test code was changed
+  for this sandbox workaround. Ordinary CI must run without it.
+- Compilation, canonical authority and diff checks pass. Source inspection
+  confirms no production consumer reads `build.short`.
 
 ## Owned resources and cleanup
 
-- Assigned checkout: `<session-checkouts>/caddie-drill-main-g1`, branch
-  `agenthub/card-1-health-build`; no delegated session or new worktree.
-- Local test processes ended; the temporary timer shim and log were removed
-  using an exact allow-list after results were recorded.
-- No containers, volumes, preview servers, tunnels, or dependency installs.
+- Assigned checkout, branch `agenthub/card-3-short-health-build`.
+  No delegated session, worktree, container, server, tunnel or volume created.
+- Local test processes ended. The temporary timer shim and focused/full test
+  logs were removed using their exact paths after results were recorded.
 
 ## Next action and stop conditions
 
-1. Return a `push` action for card:1 to publish the integrated contract/tests
-   and continuity update. Never push directly from the checkout.
-2. Await executor feedback for the updated head and the armed merge outcome;
-   do not request merge/review again for original head `8a4bdab8`.
-3. Every Codex commit includes `Generated-by: Codex`. Preserve public-path
-   redactions and keep the checkout clean after committing.
+1. Return an `open_pr` action for card:3 with the implementation and evidence.
+2. Await required CI and review; do not claim release verification for card #3.
+3. Commit with `Generated-by: Codex`, keep the checkout clean, never push
+   directly, and keep publication content free of private host paths/secrets.
