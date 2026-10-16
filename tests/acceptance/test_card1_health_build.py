@@ -1,5 +1,9 @@
 """Card #1 acceptance: GET /api/v2/health carries a read-only ``build`` object.
 
+Card #3 changed the contract: ``build`` is now ``{"revision": revision[:12]}``.
+It holds the short sha, the full value stays in the top-level ``revision``, and
+``build.short`` is gone. These tests follow the card #3 contract.
+
 Every test launches the real ``server_v2.main.app`` in a fresh interpreter
 (``subprocess.run``) with ``AI_CADDIE_BUILD_REVISION`` / ``AI_CADDIE_FIXTURE_MODE``
 already in the environment before import, exactly as a deployed or CI-fixture
@@ -27,7 +31,7 @@ READINESS = "/api/v2/readiness"
 FIXTURE_REVISION = "ci-fixture-20260827-v1"
 FIXTURE_MARKERS = {"dataMode": "ci_fixture", "source": "non_production", "fixtureRevision": FIXTURE_REVISION}
 SHA = "0123456789abcdef0123456789abcdef01234567"
-UNKNOWN_BUILD = {"revision": "unknown", "short": "unknown"}
+UNKNOWN_BUILD = {"revision": "unknown"}
 RUN = {"cwd": REPO, "capture_output": True, "text": True, "timeout": 120, "check": False}
 
 _PROBE = f"""
@@ -108,7 +112,7 @@ class HealthBuildObjectTests(unittest.TestCase):
                 "status": "ok",
                 "service": "server_v2",
                 "revision": SHA,
-                "build": {"revision": SHA, "short": "0123456789ab"},
+                "build": {"revision": "0123456789ab"},
             },
         )
 
@@ -119,9 +123,9 @@ class HealthBuildObjectTests(unittest.TestCase):
 
         self.assertEqual(health["status"], 200)
         self.assertEqual(health["body"]["revision"], "feedfacecafebeef1234")
-        self.assertEqual(_build(health), {"revision": "feedfacecafebeef1234", "short": "feedfacecafe"})
+        self.assertEqual(_build(health), {"revision": "feedfacecafe"})
 
-    def test_short_is_the_first_twelve_characters(self) -> None:
+    def test_build_revision_is_the_first_twelve_characters(self) -> None:
         # G1
         result = subprocess.run(
             _probe(
@@ -138,9 +142,9 @@ class HealthBuildObjectTests(unittest.TestCase):
         self.assertEqual(
             [_build(response) for response in responses],
             [
-                {"revision": "abc123", "short": "abc123"},
-                {"revision": "0123456789ab", "short": "0123456789ab"},
-                {"revision": "0123456789abc", "short": "0123456789ab"},
+                {"revision": "abc123"},
+                {"revision": "0123456789ab"},
+                {"revision": "0123456789ab"},
             ],
         )
 
@@ -154,9 +158,9 @@ class HealthBuildObjectTests(unittest.TestCase):
         at_boot, after_change = _responses(result)
 
         self.assertEqual(at_boot["body"]["revision"], "boot-revision-aaaaaaaa")
-        self.assertEqual(_build(at_boot), {"revision": "boot-revision-aaaaaaaa", "short": "boot-revisio"})
+        self.assertEqual(_build(at_boot), {"revision": "boot-revisio"})
         self.assertEqual(after_change["body"]["revision"], SHA)
-        self.assertEqual(_build(after_change), {"revision": SHA, "short": SHA[:12]})
+        self.assertEqual(_build(after_change), {"revision": SHA[:12]})
 
     def test_build_cannot_be_overridden_or_written(self) -> None:
         # G1
@@ -181,9 +185,9 @@ class HealthBuildObjectTests(unittest.TestCase):
 
         self.assertEqual(spoofed_read["status"], 200)
         self.assertEqual(spoofed_read["body"]["revision"], SHA)
-        self.assertEqual(_build(spoofed_read), {"revision": SHA, "short": SHA[:12]})
+        self.assertEqual(_build(spoofed_read), {"revision": SHA[:12]})
         self.assertEqual([write["status"] for write in writes], [405, 405, 405, 405])
-        self.assertEqual(_build(read_after_writes), {"revision": SHA, "short": SHA[:12]})
+        self.assertEqual(_build(read_after_writes), {"revision": SHA[:12]})
 
     def test_unset_revision_falls_back_to_unknown_everywhere(self) -> None:
         # G2
@@ -201,7 +205,7 @@ class HealthBuildObjectTests(unittest.TestCase):
         self.assertEqual(unset_at_boot["status"], 200)
         self.assertEqual(unset_at_boot["body"]["revision"], "unknown")
         self.assertEqual(_build(unset_at_boot), UNKNOWN_BUILD)
-        self.assertEqual(_build(set_later), {"revision": SHA, "short": SHA[:12]})
+        self.assertEqual(_build(set_later), {"revision": SHA[:12]})
         self.assertEqual(unset_again["body"]["revision"], "unknown")
         self.assertEqual(_build(unset_again), UNKNOWN_BUILD)
 
@@ -241,7 +245,7 @@ class HealthBuildObjectTests(unittest.TestCase):
                 "status": "ok",
                 "service": "server_v2",
                 "revision": FIXTURE_REVISION,
-                "build": {"revision": FIXTURE_REVISION, "short": "ci-fixture-2"},
+                "build": {"revision": "ci-fixture-2"},
                 **FIXTURE_MARKERS,
             },
         )
@@ -268,13 +272,12 @@ class HealthBuildObjectTests(unittest.TestCase):
 
         self.assertIsInstance(_build(real), dict)
         self.assertIsInstance(_build(fixture), dict)
-        self.assertEqual(set(_build(real)), {"revision", "short"})
+        self.assertEqual(set(_build(real)), {"revision"})
         self.assertEqual(set(_build(fixture)), set(_build(real)))
         self.assertEqual(set(fixture["body"]) - set(real["body"]), set(FIXTURE_MARKERS))
         self.assertLessEqual(set(real["body"]), set(fixture["body"]))
         for body in (real["body"], fixture["body"]):
-            self.assertEqual(body["build"]["revision"], body["revision"])
-            self.assertEqual(body["build"]["short"], body["revision"][:12])
+            self.assertEqual(body["build"]["revision"], body["revision"][:12])
             self.assertTrue(all(isinstance(value, str) for value in body["build"].values()))
 
 
